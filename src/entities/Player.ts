@@ -12,6 +12,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     right: Phaser.Input.Keyboard.Key
   }
   private lastVx = 0
+  public canJump = true
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, 'player')
@@ -46,7 +47,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     else if (goRight) vx = SPEED
     body.setVelocityX(vx)
 
-    if (jump && onGround) {
+    if (this.canJump && jump && onGround) {
       body.setVelocityY(JUMP_VELOCITY)
       bus.emit('dsa:operation', { op: 'ptr moved', zone: 'test' })
     }

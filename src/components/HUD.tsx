@@ -1,30 +1,249 @@
 import { useEffect, useState } from 'react'
 import { bus, type DsaOperation } from '../OperationBus'
+import { useGameStore } from '../store/gameStore'
+import type { GameState } from '../store/gameStore'
+
+const PSEUDOCODE = `function binarySearch(arr, target):
+  lo = 0
+  hi = arr.length - 1
+
+  while lo <= hi:
+    mid = floor((lo + hi) / 2)
+
+    if arr[mid] == target:
+      return mid          // found
+
+    if arr[mid] < target:
+      lo = mid + 1        // go right
+    else:
+      hi = mid - 1        // go left
+
+  return -1               // not found`
 
 export function HUD() {
-  const [ops, setOps] = useState<DsaOperation[]>([])
+  const [allOps, setAllOps] = useState<DsaOperation[]>([])
+  const target = useGameStore((s: GameState) => s.target)
+  const mode = useGameStore((s: GameState) => s.mode)
+  const outcome = useGameStore((s: GameState) => s.outcome)
+  const freeSteps = useGameStore((s: GameState) => s.freeSteps)
+  const binarySteps = useGameStore((s: GameState) => s.binarySteps)
+  const enemyProgress = useGameStore((s: GameState) => s.enemyProgress)
 
   useEffect(() => {
-    const handler = (op: DsaOperation) => {
-      setOps((prev) => [...prev.slice(-4), op])
-    }
-    bus.on('dsa:operation', handler)
-    return () => bus.off('dsa:operation', handler)
+    const onOp = (op: DsaOperation) =>
+      setAllOps((prev) => [...prev, op])
+    bus.on('dsa:operation', onOp)
+    return () => { bus.off('dsa:operation', onOp) }
   }, [])
 
+  const recentOps = allOps.slice(-5)
+  const bsOps = allOps.filter((o) => o.op.startsWith('bs:'))
+
+  const handleRestart = () => {
+    useGameStore.getState().resetSearch()
+    setAllOps([])
+    bus.emit('dsa:restart', undefined)
+  }
+
+  const modeLabel =
+    mode === 'free' ? 'FREE — click any box' :
+    mode === 'binary' ? 'BINARY — Space / click mid' :
+    'DONE'
+  const modeColor =
+    mode === 'free' ? 'text-yellow-400 border-yellow-800' :
+    mode === 'binary' ? 'text-cyan-400 border-cyan-800' :
+    'text-green-400 border-green-800'
+
+  /* hide gameplay HUD behind end-screens */
+  if (outcome === 'death') return <DeathScreen onRestart={handleRestart} />
+  if (outcome === 'victory') return (
+    <VictoryScreen
+      target={target}
+      freeSteps={freeSteps}
+      binarySteps={binarySteps}
+      enemyProgress={enemyProgress}
+      bsOps={bsOps}
+    />
+  )
+
   return (
-    <div className="absolute bottom-4 right-4 pointer-events-none font-mono text-xs text-green-400 bg-black/70 border border-green-900 rounded p-2 w-64 space-y-0.5">
-      <div className="text-green-600 mb-1 select-none">// ops log</div>
-      {ops.length === 0
-        ? <div className="text-green-900">— idle —</div>
-        : ops.map((o, i) => (
-            <div key={i}>
-              <span className="text-green-600">&gt;</span>{' '}
-              <span className="text-green-300">{o.op}</span>
-              <span className="text-green-700"> [{o.zone}]</span>
+    <>
+      {/* target + mode — top center */}
+      {target > 0 && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none flex gap-3 items-center select-none">
+          <div className="font-mono text-sm bg-black/70 border border-pink-800 text-pink-400 px-3 py-1 rounded">
+            find: {target}
+          </div>
+          <div className={`font-mono text-xs bg-black/70 border px-3 py-1 rounded ${modeColor}`}>
+            {modeLabel}
+          </div>
+        </div>
+      )}
+
+      {/* step counters — top right */}
+      <div className="absolute top-4 right-4 pointer-events-none font-mono text-sm bg-black/60 border border-cyan-900 rounded px-3 py-1.5 select-none space-y-0.5">
+        <div className="text-yellow-400">free: {freeSteps}</div>
+        {mode !== 'free' && (
+          <>
+            <div className="text-cyan-400">binary: {binarySteps}</div>
+            <div className="text-red-400">enemy: {enemyProgress}/50</div>
+          </>
+        )}
+      </div>
+
+      {/* ops log — bottom right */}
+      <div className="absolute bottom-4 right-4 pointer-events-none font-mono text-xs text-green-400 bg-black/70 border border-green-900 rounded p-2 w-72 space-y-0.5">
+        <div className="text-green-600 mb-1 select-none">// ops log</div>
+        {recentOps.length === 0
+          ? <div className="text-green-900">— idle —</div>
+          : recentOps.map((o, i) => (
+              <div key={i}>
+                <span className="text-green-600">&gt;</span>{' '}
+                <span className="text-green-300">{o.op}</span>
+                <span className="text-green-700"> [{o.zone}]</span>
+              </div>
+            ))
+        }
+      </div>
+    </>
+  )
+}
+
+/* ═══════════════════════════════════════════ */
+/*  DEATH SCREEN                              */
+/* ═══════════════════════════════════════════ */
+
+function DeathScreen({ onRestart }: { onRestart: () => void }) {
+  const title = useGameStore((s: GameState) => s.deathTitle) || 'CORRUPTED'
+  const detail = useGameStore((s: GameState) => s.deathDetail)
+
+  return (
+    <div className="absolute inset-0 death-overlay flex items-center justify-center z-50">
+      <div className="absolute inset-0 death-scanlines pointer-events-none" />
+
+      <div className="death-shake relative z-10 text-center px-8 max-w-lg">
+        <div className="font-mono text-xs text-red-700 tracking-[0.3em] mb-4 death-flicker">
+          ERR_0x{Math.abs(title.split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0) * 0x1f).toString(16).toUpperCase().slice(0, 4)}_FAULT
+        </div>
+
+        <div className="font-mono text-5xl font-bold text-red-500 tracking-widest mb-6">
+          {title}
+        </div>
+
+        <div className="font-mono text-sm text-red-300/80 text-left bg-black/40 border border-red-900/50 rounded p-4 mb-6 space-y-1.5">
+          <div className="text-red-500">&gt; process terminated</div>
+          <div>
+            <span className="text-red-600">  cause:</span>{' '}
+            <span className="text-red-300">{detail}</span>
+          </div>
+        </div>
+
+        <button
+          onClick={onRestart}
+          className="font-mono text-sm text-red-400 border border-red-700 bg-red-950/50 px-6 py-2 rounded
+                     hover:bg-red-900/60 hover:text-red-300 hover:border-red-500
+                     transition-colors cursor-pointer tracking-wider"
+        >
+          [ RESTART ]
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════ */
+/*  VICTORY SCREEN                            */
+/* ═══════════════════════════════════════════ */
+
+function VictoryScreen({ target, freeSteps, binarySteps, enemyProgress, bsOps }: {
+  target: number
+  freeSteps: number
+  binarySteps: number
+  enemyProgress: number
+  bsOps: DsaOperation[]
+}) {
+  const logN = Math.ceil(Math.log2(50))
+
+  return (
+    <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-50">
+      <div className="max-w-2xl w-full px-6">
+        {/* header */}
+        <div className="text-center mb-6">
+          <div className="font-mono text-xs text-green-700 tracking-[0.4em] mb-2">ZONE 1</div>
+          <div className="font-mono text-4xl font-bold text-green-400 tracking-widest">
+            COMPLETE
+          </div>
+        </div>
+
+        {/* two-column body */}
+        <div className="flex gap-4 mb-6">
+          {/* left: stats + ops */}
+          <div className="flex-1 space-y-4">
+            {/* stats */}
+            <div className="font-mono text-sm bg-black/60 border border-green-900/60 rounded p-3 space-y-1.5">
+              <div className="text-green-600 text-xs mb-2">// stats</div>
+              <div className="text-green-300">
+                <span className="text-green-600">target:</span> {target}
+              </div>
+              <div className="text-yellow-400">
+                <span className="text-green-600">free search:</span> {freeSteps} steps
+              </div>
+              <div className="text-cyan-400">
+                <span className="text-green-600">binary search:</span> {binarySteps} steps
+              </div>
+              <div className="text-red-400">
+                <span className="text-green-600">enemy scanned:</span> {enemyProgress}/50
+              </div>
+              <div className="border-t border-green-900/40 pt-1.5 mt-1.5 text-green-300">
+                <span className="text-green-600">complexity:</span>{' '}
+                <span className="text-cyan-400">O(log n)</span>
+                <span className="text-green-700"> = O(log 50) = </span>
+                <span className="text-white">{logN}</span>
+                <span className="text-green-700"> vs O(n) = </span>
+                <span className="text-red-400">50</span>
+              </div>
             </div>
-          ))
-      }
+
+            {/* operations performed */}
+            <div className="font-mono text-xs bg-black/60 border border-green-900/60 rounded p-3">
+              <div className="text-green-600 mb-1.5">// binary search ops ({bsOps.length})</div>
+              <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                {bsOps.map((o, i) => (
+                  <div key={i}>
+                    <span className="text-green-700">{i + 1}.</span>{' '}
+                    <span className="text-green-300">{o.op.replace('bs: ', '')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* right: pseudocode */}
+          <div className="flex-1">
+            <div className="font-mono text-xs bg-black/60 border border-green-900/60 rounded p-3 h-full">
+              <div className="text-green-600 mb-2">// algorithm</div>
+              <pre className="text-green-400/90 whitespace-pre leading-relaxed text-[11px]">
+                {PSEUDOCODE}
+              </pre>
+            </div>
+          </div>
+        </div>
+
+        {/* next zone button */}
+        <div className="text-center">
+          <button
+            onClick={() => {
+              useGameStore.getState().resetSearch()
+              bus.emit('dsa:nextzone', undefined)
+            }}
+            className="font-mono text-sm text-green-400 border border-green-700 bg-green-950/40 px-8 py-2.5 rounded
+                       hover:bg-green-900/50 hover:text-green-300 hover:border-green-400
+                       transition-colors cursor-pointer tracking-wider"
+          >
+            NEXT ZONE →
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

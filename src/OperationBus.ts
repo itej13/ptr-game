@@ -7,6 +7,9 @@ export type DsaOperation = {
 
 type BusEvents = {
   'dsa:operation': DsaOperation
+  'dsa:step': undefined
+  'dsa:restart': undefined
+  'dsa:nextzone': undefined
 }
 
 export const bus = mitt<BusEvents>()

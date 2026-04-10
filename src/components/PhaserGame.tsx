@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import Phaser from 'phaser'
 import { BootScene } from '../scenes/BootScene'
+import { Zone1_Array } from '../scenes/Zone1_Array'
+import { Zone2_Stack } from '../scenes/Zone2_Stack'
 
 const GAME_CONFIG: Phaser.Types.Core.GameConfig = {
   type: Phaser.CANVAS,
@@ -10,7 +12,7 @@ const GAME_CONFIG: Phaser.Types.Core.GameConfig = {
     default: 'arcade',
     arcade: { debug: false },
   },
-  scene: [BootScene],
+  scene: [BootScene, Zone1_Array, Zone2_Stack],
 }
 
 export function PhaserGame() {
