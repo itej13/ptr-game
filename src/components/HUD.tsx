@@ -121,7 +121,9 @@ export function HUD() {
         {isList ? (
           <>
             <div className="text-cyan-400">traversals: {allOps.filter(o => o.op.includes('ptr = ptr->next')).length}</div>
-            <div className="text-green-600 text-xs mt-1">→ / D: traverse</div>
+            <div className="text-green-600 text-xs mt-1">→: traverse</div>
+            <div className="text-yellow-600 text-xs">Ins: insert after</div>
+            <div className="text-red-600 text-xs">Del: delete next</div>
           </>
         ) : isStack ? (
           <>

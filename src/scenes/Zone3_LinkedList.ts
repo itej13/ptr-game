@@ -22,13 +22,16 @@ export class Zone3_LinkedList extends Phaser.Scene {
   private head!: LinkedListNode
   private current!: LinkedListNode
   private platforms!: Phaser.Physics.Arcade.StaticGroup
-  private vines: Phaser.GameObjects.Graphics[] = []
-  private vineGlows: Phaser.GameObjects.Graphics[] = []
+  private vineMap = new Map<LinkedListNode, { main: Phaser.GameObjects.Graphics; glow: Phaser.GameObjects.Graphics }>()
+  private nodeLabels = new Map<LinkedListNode, Phaser.GameObjects.Text>()
+  private nodeList: LinkedListNode[] = []
   private traversals = 0
   private busy = false
   private dead = false
 
   private rightKey!: Phaser.Input.Keyboard.Key
+  private insertKey!: Phaser.Input.Keyboard.Key
+  private deleteKey!: Phaser.Input.Keyboard.Key
 
   constructor() {
     super({ key: 'Zone3_LinkedList' })
@@ -40,6 +43,9 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.dead = false
     this.busy = false
     this.traversals = 0
+    this.nodeList = []
+    this.vineMap.clear()
+    this.nodeLabels.clear()
 
     const store = useGameStore.getState()
     store.resetSearch()
@@ -48,34 +54,32 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.generateTextures()
     this.drawStarfield()
 
-    // build linked list
     this.buildLinkedList()
 
-    // platform group
     this.platforms = this.physics.add.staticGroup()
 
-    // position nodes and draw vines
     let node: LinkedListNode | null = this.head
     let x = FIRST_X
     let index = 0
-    const nodeList: LinkedListNode[] = []
 
     while (node) {
       node.index = index
       const sprite = this.platforms.create(x, PLAYER_Y, 'node') as Phaser.Physics.Arcade.Sprite
       node.platform = sprite
-      nodeList.push(node)
+      this.nodeList.push(node)
       x += NODE_SPACING
       index++
       node = node.next
     }
 
-    // draw vines between nodes
-    for (let i = 0; i < nodeList.length - 1; i++) {
-      this.drawVine(nodeList[i], nodeList[i + 1])
+    for (let i = 0; i < this.nodeList.length - 1; i++) {
+      this.drawVine(this.nodeList[i], this.nodeList[i + 1])
     }
 
-    // player on head
+    for (const n of this.nodeList) {
+      this.addNodeLabel(n)
+    }
+
     this.current = this.head
     this.player = new Player(this, this.head.platform.x, PLAYER_Y)
     this.player.setDepth(10)
@@ -87,17 +91,16 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H)
     this.cameras.main.startFollow(this.player, false, 0.08, 0)
 
-    // keys
     this.rightKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT)
-    this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D)
+    this.insertKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.INSERT)
+    this.deleteKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.DELETE)
 
-    // restart wiring
     const onRestart = () => this.scene.restart()
     bus.on('dsa:restart', onRestart)
     this.events.on('shutdown', () => bus.off('dsa:restart', onRestart))
 
     bus.emit('dsa:operation', {
-      op: `Zone 3 — linked list traversal ptr = head`,
+      op: `Zone 3 — linked list  ptr = head`,
       zone: 'list',
     })
   }
@@ -108,9 +111,9 @@ export class Zone3_LinkedList extends Phaser.Scene {
 
     if (this.busy) return
     const JD = Phaser.Input.Keyboard.JustDown
-    if (JD(this.rightKey)) {
-      this.traverse()
-    }
+    if (JD(this.rightKey)) this.traverse()
+    if (JD(this.insertKey)) this.insertAfterCurrent()
+    if (JD(this.deleteKey)) this.deleteNextNode()
   }
 
   /* ── linked list ────────────────────────── */
@@ -148,26 +151,21 @@ export class Zone3_LinkedList extends Phaser.Scene {
     const x2 = toNode.platform.x - NODE_RADIUS
     const y2 = toNode.platform.y
 
-    // glow (back layer)
     const glowG = this.add.graphics().setDepth(2)
     glowG.lineStyle(12, 0x00ffaa, 0.15)
     glowG.moveTo(x1, y1)
     glowG.lineTo(x2, y2)
     glowG.strokePath()
-    this.vineGlows.push(glowG)
 
-    // main line
     const g = this.add.graphics().setDepth(3)
     g.lineStyle(3, 0x00ffaa, 0.9)
     g.moveTo(x1, y1)
     g.lineTo(x2, y2)
     g.strokePath()
 
-    // arrowhead
     const dx = x2 - x1
     const dy = y2 - y1
     const angle = Math.atan2(dy, dx)
-
     const headLen = 16
     const headWidth = 12
     const tipX = x2
@@ -185,7 +183,33 @@ export class Zone3_LinkedList extends Phaser.Scene {
     g.closePath()
     g.fillPath()
 
-    this.vines.push(g)
+    this.vineMap.set(fromNode, { main: g, glow: glowG })
+  }
+
+  private removeVine(fromNode: LinkedListNode) {
+    const entry = this.vineMap.get(fromNode)
+    if (!entry) return
+    this.tweens.add({
+      targets: [entry.main, entry.glow],
+      alpha: 0,
+      duration: 300,
+      onComplete: () => {
+        entry.main.destroy()
+        entry.glow.destroy()
+      },
+    })
+    this.vineMap.delete(fromNode)
+  }
+
+  /* ── node labels ────────────────────────── */
+
+  private addNodeLabel(node: LinkedListNode) {
+    const label = this.add.text(node.platform.x, node.platform.y, `${node.value}`, {
+      fontSize: '22px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(8)
+    this.nodeLabels.set(node, label)
   }
 
   /* ── traversal ──────────────────────────── */
@@ -227,10 +251,127 @@ export class Zone3_LinkedList extends Phaser.Scene {
         })
         bus.emit('dsa:step', undefined)
 
-        // check win: reached end
         if (!next.next) {
           this.onVictory()
         }
+      },
+    })
+  }
+
+  /* ── insertion ──────────────────────────── */
+
+  private insertAfterCurrent() {
+    if (this.busy) return
+    this.busy = true
+
+    const oldNext = this.current.next
+    const newValue = Phaser.Math.Between(1, 99)
+
+    const fromX = this.current.platform.x
+    const toX = oldNext ? oldNext.platform.x : fromX + NODE_SPACING
+    const finalX = (fromX + toX) / 2
+    const startY = PLAYER_Y - 220
+
+    const sprite = this.platforms.create(finalX, startY, 'node') as Phaser.Physics.Arcade.Sprite
+    const newNode: LinkedListNode = {
+      value: newValue,
+      next: oldNext,
+      platform: sprite,
+      index: this.current.index + 1,
+    }
+
+    const label = this.add.text(finalX, startY, `${newValue}`, {
+      fontSize: '22px',
+      color: '#ffffff',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(8)
+    this.nodeLabels.set(newNode, label)
+
+    bus.emit('dsa:operation', { op: `new_node = Node(${newValue})`, zone: 'list' })
+
+    // Phase 1: slide node down from above
+    this.tweens.add({
+      targets: [sprite, label],
+      y: PLAYER_Y,
+      duration: 400,
+      ease: 'Bounce.Out',
+      onComplete: () => {
+        sprite.refreshBody()
+
+        // new_node.next = current.next
+        if (oldNext) {
+          this.drawVine(newNode, oldNext)
+          bus.emit('dsa:operation', { op: `new_node.next = current.next // → ${oldNext.value}`, zone: 'list' })
+        }
+
+        // Phase 2: after pause, redirect current.next = new_node
+        this.time.delayedCall(600, () => {
+          this.removeVine(this.current)
+          this.current.next = newNode
+
+          this.time.delayedCall(350, () => {
+            this.drawVine(this.current, newNode)
+            bus.emit('dsa:operation', { op: `current.next = new_node // inserted ${newValue}`, zone: 'list' })
+
+            const insertIdx = this.current.index + 1
+            this.nodeList.splice(insertIdx, 0, newNode)
+            this.nodeList.forEach((n, i) => (n.index = i))
+
+            this.busy = false
+          })
+        })
+      },
+    })
+  }
+
+  /* ── deletion ──────────────────────────── */
+
+  private deleteNextNode() {
+    if (this.busy) return
+    if (!this.current.next) {
+      bus.emit('dsa:operation', { op: `delete: current.next is null`, zone: 'list' })
+      return
+    }
+
+    this.busy = true
+    const target = this.current.next
+    const afterTarget = target.next
+
+    bus.emit('dsa:operation', { op: `delete current.next // removing ${target.value}`, zone: 'list' })
+
+    // Remove vines current→target and target→afterTarget
+    this.removeVine(this.current)
+    this.removeVine(target)
+    this.current.next = afterTarget
+
+    // Draw new bypass vine current → afterTarget
+    if (afterTarget) {
+      this.time.delayedCall(350, () => {
+        this.drawVine(this.current, afterTarget)
+        bus.emit('dsa:operation', { op: `current.next = target.next // → ${afterTarget.value}`, zone: 'list' })
+      })
+    }
+
+    // Float target node upward and fade
+    const targetLabel = this.nodeLabels.get(target)
+    this.tweens.add({
+      targets: targetLabel ? [target.platform, targetLabel] : [target.platform],
+      y: PLAYER_Y - 220,
+      alpha: 0,
+      duration: 600,
+      ease: 'Power2',
+      onComplete: () => {
+        target.platform.destroy()
+        if (targetLabel) {
+          targetLabel.destroy()
+          this.nodeLabels.delete(target)
+        }
+
+        const idx = this.nodeList.indexOf(target)
+        if (idx !== -1) this.nodeList.splice(idx, 1)
+        this.nodeList.forEach((n, i) => (n.index = i))
+
+        this.busy = false
       },
     })
   }
@@ -254,7 +395,6 @@ export class Zone3_LinkedList extends Phaser.Scene {
   /* ── textures ──────────────────────────── */
 
   private generateTextures() {
-    // node: glowing orb
     const ng = this.make.graphics({ x: 0, y: 0 })
     const size = NODE_RADIUS * 2
     ng.fillStyle(0x0088ff, 0.2)
