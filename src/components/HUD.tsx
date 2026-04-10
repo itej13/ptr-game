@@ -3,7 +3,7 @@ import { bus, type DsaOperation } from '../OperationBus'
 import { useGameStore } from '../store/gameStore'
 import type { GameState } from '../store/gameStore'
 
-const PSEUDOCODE = `function binarySearch(arr, target):
+const BS_PSEUDOCODE = `function binarySearch(arr, target):
   lo = 0
   hi = arr.length - 1
 
@@ -20,6 +20,20 @@ const PSEUDOCODE = `function binarySearch(arr, target):
 
   return -1               // not found`
 
+const STACK_PSEUDOCODE = `// stack overflow prevention
+while timer > 0:
+  stack.push(block)   // auto, faster each phase
+
+  if player.input():
+    stack.pop()       // manual — keep height down!
+
+  if stack.height > MAX:
+    OVERFLOW!         // game over
+
+// LIFO: Last In, First Out
+// pop() always removes the top element
+// push() always adds to the top`
+
 export function HUD() {
   const [allOps, setAllOps] = useState<DsaOperation[]>([])
   const target = useGameStore((s: GameState) => s.target)
@@ -28,6 +42,9 @@ export function HUD() {
   const freeSteps = useGameStore((s: GameState) => s.freeSteps)
   const binarySteps = useGameStore((s: GameState) => s.binarySteps)
   const enemyProgress = useGameStore((s: GameState) => s.enemyProgress)
+  const currentZone = useGameStore((s: GameState) => s.currentZone)
+  const survivalTime = useGameStore((s: GameState) => s.survivalTime)
+  const pops = useGameStore((s: GameState) => s.pops)
 
   useEffect(() => {
     const onOp = (op: DsaOperation) =>
@@ -45,17 +62,21 @@ export function HUD() {
     bus.emit('dsa:restart', undefined)
   }
 
-  const modeLabel =
-    mode === 'free' ? 'FREE — click any box' :
-    mode === 'binary' ? 'BINARY — Space / click mid' :
-    'DONE'
-  const modeColor =
-    mode === 'free' ? 'text-yellow-400 border-yellow-800' :
-    mode === 'binary' ? 'text-cyan-400 border-cyan-800' :
-    'text-green-400 border-green-800'
+  // mode labels
+  const isStack = currentZone === 'stack'
+  const modeLabel = isStack
+    ? 'SURVIVAL — pop to stay alive'
+    : mode === 'free' ? 'FREE — click any box'
+    : mode === 'binary' ? 'BINARY — Space / click mid'
+    : 'DONE'
+  const modeColor = isStack
+    ? 'text-red-400 border-red-800'
+    : mode === 'free' ? 'text-yellow-400 border-yellow-800'
+    : mode === 'binary' ? 'text-cyan-400 border-cyan-800'
+    : 'text-green-400 border-green-800'
 
-  /* hide gameplay HUD behind end-screens */
   if (outcome === 'death') return <DeathScreen onRestart={handleRestart} />
+  if (outcome === 'victory' && isStack) return <StackVictoryScreen pops={pops} />
   if (outcome === 'victory') return (
     <VictoryScreen
       target={target}
@@ -66,27 +87,50 @@ export function HUD() {
     />
   )
 
+  // tempo phase for display
+  const elapsed = 30 - survivalTime
+  const phase = Math.min(Math.floor(elapsed / 10) + 1, 3)
+  const timeColor = survivalTime <= 10 ? 'text-red-400' : survivalTime <= 20 ? 'text-yellow-400' : 'text-green-400'
+
   return (
     <>
-      {/* target + mode — top center */}
-      {target > 0 && (
+      {/* target / mode — top center */}
+      {(target > 0 || isStack) && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none flex gap-3 items-center select-none">
-          <div className="font-mono text-sm bg-black/70 border border-pink-800 text-pink-400 px-3 py-1 rounded">
-            find: {target}
-          </div>
+          {isStack ? (
+            <div className={`font-mono text-lg bg-black/70 border border-red-800 px-4 py-1 rounded tabular-nums ${timeColor}`}>
+              {survivalTime}s
+            </div>
+          ) : (
+            <div className="font-mono text-sm bg-black/70 border border-pink-800 text-pink-400 px-3 py-1 rounded">
+              find: {target}
+            </div>
+          )}
           <div className={`font-mono text-xs bg-black/70 border px-3 py-1 rounded ${modeColor}`}>
             {modeLabel}
           </div>
         </div>
       )}
 
-      {/* step counters — top right */}
+      {/* counters — top right */}
       <div className="absolute top-4 right-4 pointer-events-none font-mono text-sm bg-black/60 border border-cyan-900 rounded px-3 py-1.5 select-none space-y-0.5">
-        <div className="text-yellow-400">free: {freeSteps}</div>
-        {mode !== 'free' && (
+        {isStack ? (
           <>
-            <div className="text-cyan-400">binary: {binarySteps}</div>
-            <div className="text-red-400">enemy: {enemyProgress}/50</div>
+            <div className="text-orange-400">pops: {pops}</div>
+            <div className="text-cyan-400 text-xs">
+              tempo: {phase}/3
+            </div>
+            <div className="text-green-600 text-xs mt-1">Space / ↓ / S / X: POP</div>
+          </>
+        ) : (
+          <>
+            <div className="text-yellow-400">free: {freeSteps}</div>
+            {mode !== 'free' && (
+              <>
+                <div className="text-cyan-400">binary: {binarySteps}</div>
+                <div className="text-red-400">enemy: {enemyProgress}/50</div>
+              </>
+            )}
           </>
         )}
       </div>
@@ -152,7 +196,7 @@ function DeathScreen({ onRestart }: { onRestart: () => void }) {
 }
 
 /* ═══════════════════════════════════════════ */
-/*  VICTORY SCREEN                            */
+/*  ZONE 1 VICTORY SCREEN                    */
 /* ═══════════════════════════════════════════ */
 
 function VictoryScreen({ target, freeSteps, binarySteps, enemyProgress, bsOps }: {
@@ -167,7 +211,6 @@ function VictoryScreen({ target, freeSteps, binarySteps, enemyProgress, bsOps }:
   return (
     <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-50">
       <div className="max-w-2xl w-full px-6">
-        {/* header */}
         <div className="text-center mb-6">
           <div className="font-mono text-xs text-green-700 tracking-[0.4em] mb-2">ZONE 1</div>
           <div className="font-mono text-4xl font-bold text-green-400 tracking-widest">
@@ -175,11 +218,8 @@ function VictoryScreen({ target, freeSteps, binarySteps, enemyProgress, bsOps }:
           </div>
         </div>
 
-        {/* two-column body */}
         <div className="flex gap-4 mb-6">
-          {/* left: stats + ops */}
           <div className="flex-1 space-y-4">
-            {/* stats */}
             <div className="font-mono text-sm bg-black/60 border border-green-900/60 rounded p-3 space-y-1.5">
               <div className="text-green-600 text-xs mb-2">// stats</div>
               <div className="text-green-300">
@@ -204,7 +244,6 @@ function VictoryScreen({ target, freeSteps, binarySteps, enemyProgress, bsOps }:
               </div>
             </div>
 
-            {/* operations performed */}
             <div className="font-mono text-xs bg-black/60 border border-green-900/60 rounded p-3">
               <div className="text-green-600 mb-1.5">// binary search ops ({bsOps.length})</div>
               <div className="space-y-0.5 max-h-32 overflow-y-auto">
@@ -218,18 +257,16 @@ function VictoryScreen({ target, freeSteps, binarySteps, enemyProgress, bsOps }:
             </div>
           </div>
 
-          {/* right: pseudocode */}
           <div className="flex-1">
             <div className="font-mono text-xs bg-black/60 border border-green-900/60 rounded p-3 h-full">
               <div className="text-green-600 mb-2">// algorithm</div>
               <pre className="text-green-400/90 whitespace-pre leading-relaxed text-[11px]">
-                {PSEUDOCODE}
+                {BS_PSEUDOCODE}
               </pre>
             </div>
           </div>
         </div>
 
-        {/* next zone button */}
         <div className="text-center">
           <button
             onClick={() => {
@@ -241,6 +278,74 @@ function VictoryScreen({ target, freeSteps, binarySteps, enemyProgress, bsOps }:
                        transition-colors cursor-pointer tracking-wider"
           >
             NEXT ZONE →
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════ */
+/*  ZONE 2 (STACK) VICTORY SCREEN            */
+/* ═══════════════════════════════════════════ */
+
+function StackVictoryScreen({ pops }: { pops: number }) {
+  return (
+    <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-50">
+      <div className="max-w-2xl w-full px-6">
+        <div className="text-center mb-6">
+          <div className="font-mono text-xs text-green-700 tracking-[0.4em] mb-2">ZONE 2</div>
+          <div className="font-mono text-4xl font-bold text-green-400 tracking-widest">
+            SURVIVED
+          </div>
+        </div>
+
+        <div className="flex gap-4 mb-6">
+          <div className="flex-1 space-y-4">
+            <div className="font-mono text-sm bg-black/60 border border-green-900/60 rounded p-3 space-y-1.5">
+              <div className="text-green-600 text-xs mb-2">// stats</div>
+              <div className="text-green-300">
+                <span className="text-green-600">survived:</span> 30 seconds
+              </div>
+              <div className="text-orange-400">
+                <span className="text-green-600">total pops:</span> {pops}
+              </div>
+              <div className="text-cyan-400">
+                <span className="text-green-600">tempo phases:</span> 3/3
+              </div>
+              <div className="border-t border-green-900/40 pt-1.5 mt-1.5 text-green-300">
+                <span className="text-green-600">data structure:</span>{' '}
+                <span className="text-orange-400">Stack (LIFO)</span>
+              </div>
+              <div className="text-green-300">
+                <span className="text-green-600">lesson:</span>{' '}
+                <span className="text-green-700">push/pop are O(1) but overflow is O(n) danger</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1">
+            <div className="font-mono text-xs bg-black/60 border border-green-900/60 rounded p-3 h-full">
+              <div className="text-green-600 mb-2">// algorithm</div>
+              <pre className="text-orange-400/90 whitespace-pre leading-relaxed text-[11px]">
+                {STACK_PSEUDOCODE}
+              </pre>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center">
+          <div className="font-mono text-xs text-green-700 mb-3">more zones coming soon</div>
+          <button
+            onClick={() => {
+              useGameStore.getState().resetSearch()
+              bus.emit('dsa:restart', undefined)
+            }}
+            className="font-mono text-sm text-green-400 border border-green-700 bg-green-950/40 px-8 py-2.5 rounded
+                       hover:bg-green-900/50 hover:text-green-300 hover:border-green-400
+                       transition-colors cursor-pointer tracking-wider"
+          >
+            REPLAY ZONE
           </button>
         </div>
       </div>

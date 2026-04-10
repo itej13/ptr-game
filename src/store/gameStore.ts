@@ -16,6 +16,8 @@ export interface GameState {
   enemyProgress: number
   deathTitle: string
   deathDetail: string
+  survivalTime: number
+  pops: number
 
   setTarget: (t: number) => void
   setMode: (m: SearchMode) => void
@@ -24,6 +26,8 @@ export interface GameState {
   setOutcome: (o: Outcome) => void
   setEnemyProgress: (n: number) => void
   setDeath: (title: string, detail: string) => void
+  setSurvivalTime: (t: number) => void
+  incPops: () => void
   resetSearch: () => void
 }
 
@@ -39,6 +43,8 @@ const storeCreator: StateCreator<GameState> = (set) => ({
   enemyProgress: 0,
   deathTitle: '',
   deathDetail: '',
+  survivalTime: 30,
+  pops: 0,
 
   setTarget: (target: number) => set({ target }),
   setMode: (mode: SearchMode) => set({ mode }),
@@ -47,10 +53,13 @@ const storeCreator: StateCreator<GameState> = (set) => ({
   setOutcome: (outcome: Outcome) => set({ outcome }),
   setEnemyProgress: (enemyProgress: number) => set({ enemyProgress }),
   setDeath: (deathTitle: string, deathDetail: string) => set({ deathTitle, deathDetail, outcome: 'death' }),
+  setSurvivalTime: (survivalTime: number) => set({ survivalTime }),
+  incPops: () => set((s: GameState) => ({ pops: s.pops + 1 })),
   resetSearch: () => set({
     mode: 'free', freeSteps: 0, binarySteps: 0,
     target: 0, outcome: 'playing', enemyProgress: 0,
     deathTitle: '', deathDetail: '',
+    survivalTime: 30, pops: 0,
   }),
 })
 

@@ -61,6 +61,7 @@ export class Zone1_Array extends Phaser.Scene {
     this.target = this.values[this.targetIndex]
     const store = useGameStore.getState()
     store.resetSearch()
+    store.setCurrentZone('array')
     store.setTarget(this.target)
     store.setMode('free')
     this.mode = 'free'

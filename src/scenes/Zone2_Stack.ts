@@ -4,7 +4,7 @@ import { bus } from '../OperationBus'
 import { useGameStore } from '../store/gameStore'
 
 const BLOCK = 64
-const INIT_COUNT = 10
+const INIT_COUNT = 3
 const STACK_CX = 640
 const FLOOR_Y = 1500
 const CEILING_Y = 200
@@ -14,6 +14,11 @@ const WORLD_H = 1800
 const CORR_HALF = 120
 const WALL_L = STACK_CX - CORR_HALF
 const WALL_R = STACK_CX + CORR_HALF
+
+const SURVIVAL_SECS = 30
+const PHASE_SECS = 10
+const TEMPOS = [2000, 1300, 800]           // ms between auto-pushes per phase
+const MAX_INDEX = 19                        // overflow at topIndex > this
 
 interface StackBlock {
   sprite: Phaser.GameObjects.Sprite
@@ -31,9 +36,14 @@ export class Zone2_Stack extends Phaser.Scene {
   private busy = false
   private dead = false
 
+  // survival
+  private elapsed = 0
+  private phase = 0
+  private pushTimer?: Phaser.Time.TimerEvent
+  private countdownTimer?: Phaser.Time.TimerEvent
+  private dangerOverlay!: Phaser.GameObjects.Graphics
+
   // keys
-  private upKey!: Phaser.Input.Keyboard.Key
-  private wKey!: Phaser.Input.Keyboard.Key
   private spaceKey!: Phaser.Input.Keyboard.Key
   private downKey!: Phaser.Input.Keyboard.Key
   private sKey!: Phaser.Input.Keyboard.Key
@@ -48,14 +58,19 @@ export class Zone2_Stack extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H)
     this.dead = false
     this.busy = false
+    this.elapsed = 0
+    this.phase = 0
 
-    useGameStore.getState().resetSearch()
+    const store = useGameStore.getState()
+    store.resetSearch()
+    store.setCurrentZone('stack')
+    store.setSurvivalTime(SURVIVAL_SECS)
 
     this.generateTextures()
     this.drawWalls()
     this.drawTorches()
 
-    // ── ceiling ───────────────────────────────
+    // ceiling
     const ceilZone = this.add.zone(STACK_CX, CEILING_Y - CEIL_H / 2, WORLD_W, CEIL_H)
     this.physics.add.existing(ceilZone, true)
 
@@ -74,13 +89,21 @@ export class Zone2_Stack extends Phaser.Scene {
     glowG.fillStyle(0xff2200, 0.03)
     glowG.fillRect(WALL_L, CEILING_Y + 60, CORR_HALF * 2, 60)
 
-    // ── wall collision ────────────────────────
+    // wall collision
     const wallL = this.add.zone(WALL_L - 100, WORLD_H / 2, 200, WORLD_H)
     this.physics.add.existing(wallL, true)
     const wallR = this.add.zone(WALL_R + 100, WORLD_H / 2, 200, WORLD_H)
     this.physics.add.existing(wallR, true)
 
-    // ── stack ─────────────────────────────────
+    // floor (catch player if stack empties briefly)
+    const floor = this.add.zone(STACK_CX, FLOOR_Y + 16, CORR_HALF * 2, 32)
+    this.physics.add.existing(floor, true)
+
+    // danger overlay (fullscreen red tint when stack is high)
+    this.dangerOverlay = this.add.graphics().setDepth(20).setScrollFactor(0)
+    this.dangerOverlay.setAlpha(0)
+
+    // stack
     this.blocks = []
     this.topIndex = -1
     this.topPlatform = this.physics.add.staticGroup()
@@ -92,48 +115,119 @@ export class Zone2_Stack extends Phaser.Scene {
     this.topIndex = INIT_COUNT - 1
     this.refreshTopPlatform()
 
-    // ── player ────────────────────────────────
+    // player
     const spawnY = this.blockY(this.topIndex) - BLOCK / 2 - 9
     this.player = new Player(this, STACK_CX, spawnY)
     this.player.setDepth(10)
     this.player.canJump = false
+    this.player.canMove = false
 
     this.physics.add.collider(this.player, this.topPlatform)
     this.physics.add.collider(this.player, ceilZone)
     this.physics.add.collider(this.player, wallL)
     this.physics.add.collider(this.player, wallR)
+    this.physics.add.collider(this.player, floor)
 
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H)
     this.cameras.main.startFollow(this.player, false, 0, 0.08)
 
-    // ── keys ──────────────────────────────────
+    // keys
     const kb = this.input.keyboard!
-    this.upKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.UP)
-    this.wKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.W)
     this.spaceKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
     this.downKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN)
     this.sKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.S)
     this.xKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X)
 
-    // ── restart wiring ────────────────────────
+    // restart wiring
     const onRestart = () => this.scene.restart()
     bus.on('dsa:restart', onRestart)
-    this.events.on('shutdown', () => bus.off('dsa:restart', onRestart))
+    this.events.on('shutdown', () => {
+      bus.off('dsa:restart', onRestart)
+      this.pushTimer?.remove()
+      this.countdownTimer?.remove()
+    })
 
-    bus.emit('dsa:operation', { op: 'entered Zone 2 — Stack', zone: 'stack' })
+    bus.emit('dsa:operation', { op: 'Zone 2 — survive 30s, pop to stay alive', zone: 'stack' })
+
+    // start survival after a brief pause
+    this.time.delayedCall(1200, () => {
+      if (this.dead) return
+      this.startSurvival()
+    })
   }
 
   update() {
     if (this.dead) return
     this.player.update()
 
+    // danger overlay based on stack height
+    const danger = this.topIndex / MAX_INDEX
+    if (danger > 0.6) {
+      this.dangerOverlay.clear()
+      this.dangerOverlay.fillStyle(0xff0000, (danger - 0.6) * 0.3)
+      this.dangerOverlay.fillRect(0, 0, WORLD_W, 720)
+    } else {
+      this.dangerOverlay.clear()
+    }
+
     if (this.busy) return
     const JD = Phaser.Input.Keyboard.JustDown
-    if (JD(this.upKey) || JD(this.wKey) || JD(this.spaceKey)) this.doPush()
-    else if (JD(this.downKey) || JD(this.sKey) || JD(this.xKey)) this.doPop()
+    if (JD(this.spaceKey) || JD(this.downKey) || JD(this.sKey) || JD(this.xKey)) {
+      this.doPop()
+    }
   }
 
-  /* ── block helpers ──────────────────────── */
+  /* ── survival timers ───────────────────── */
+
+  private startSurvival() {
+    this.startPushTimer()
+
+    this.countdownTimer = this.time.addEvent({
+      delay: 1000, loop: true,
+      callback: () => {
+        if (this.dead) return
+        this.elapsed++
+        const remaining = SURVIVAL_SECS - this.elapsed
+        useGameStore.getState().setSurvivalTime(remaining)
+
+        // phase change
+        const newPhase = Math.min(Math.floor(this.elapsed / PHASE_SECS), TEMPOS.length - 1)
+        if (newPhase !== this.phase) {
+          this.phase = newPhase
+          this.startPushTimer()
+          bus.emit('dsa:operation', {
+            op: `tempo ↑ phase ${this.phase + 1}/${TEMPOS.length}`,
+            zone: 'stack',
+          })
+          this.cameras.main.flash(200, 255, 100, 0)
+        }
+
+        if (remaining <= 0) {
+          this.onVictory()
+        }
+      },
+    })
+  }
+
+  private startPushTimer() {
+    this.pushTimer?.remove()
+    this.pushTimer = this.time.addEvent({
+      delay: TEMPOS[this.phase],
+      loop: true,
+      callback: () => this.autoPush(),
+    })
+  }
+
+  private autoPush() {
+    if (this.dead) return
+    if (this.busy) {
+      this.time.delayedCall(100, () => this.autoPush())
+      return
+    }
+    this.doPush()
+  }
+
+  /* ── block helpers ─────────────────────── */
 
   private blockY(index: number) {
     return FLOOR_Y - index * BLOCK - BLOCK / 2
@@ -164,7 +258,6 @@ export class Zone2_Stack extends Phaser.Scene {
     p.setAlpha(0).setDepth(1)
     p.refreshBody()
 
-    // highlight
     this.topHighlight.lineStyle(2, 0x00ffcc, 0.6)
     this.topHighlight.strokeRect(
       STACK_CX - BLOCK / 2 - 2, by - BLOCK / 2 - 2,
@@ -175,7 +268,7 @@ export class Zone2_Stack extends Phaser.Scene {
     this.topHighlight.fillTriangle(ax, by - 6, ax, by + 6, ax + 8, by)
   }
 
-  /* ── PUSH ───────────────────────────────── */
+  /* ── PUSH (auto) ───────────────────────── */
 
   private doPush() {
     this.busy = true
@@ -183,39 +276,41 @@ export class Zone2_Stack extends Phaser.Scene {
     const newY = this.blockY(newIdx)
     const val = Phaser.Math.Between(1, 99)
 
-    // create block above camera view
     const block = this.createBlock(newIdx, val)
-    const startY = newY - 400
+    // tint new blocks red to signal danger
+    block.sprite.setTint(0xcc4444)
+    this.time.delayedCall(400, () => {
+      if (block.sprite.active) block.sprite.clearTint()
+    })
+
+    const startY = newY - 300
     block.sprite.setY(startY)
     block.valText.setY(startY)
     block.label.setY(startY)
 
-    // disable gravity while riding
     const body = this.player.body as Phaser.Physics.Arcade.Body
     body.setAllowGravity(false)
     body.setVelocity(0, 0)
 
     const playerTargetY = newY - BLOCK / 2 - 9
 
-    // tween block down
     this.tweens.add({
       targets: [block.sprite, block.valText],
       y: newY,
-      duration: 450,
-      ease: 'Bounce.easeOut',
+      duration: 300,
+      ease: 'Power2',
     })
     this.tweens.add({
       targets: block.label,
       y: newY,
-      duration: 450,
-      ease: 'Bounce.easeOut',
+      duration: 300,
+      ease: 'Power2',
     })
 
-    // tween player up
     this.tweens.add({
       targets: this.player,
       y: playerTargetY,
-      duration: 400,
+      duration: 280,
       ease: 'Power2',
       onComplete: () => {
         this.topIndex = newIdx
@@ -223,11 +318,15 @@ export class Zone2_Stack extends Phaser.Scene {
         body.setAllowGravity(true)
         body.setVelocity(0, 0)
         this.busy = false
+
+        // check overflow
+        if (this.topIndex > MAX_INDEX) {
+          this.onOverflow()
+        }
       },
     })
 
     bus.emit('dsa:operation', { op: `push(${val})`, zone: 'stack' })
-    bus.emit('dsa:step', undefined)
   }
 
   /* ── POP ────────────────────────────────── */
@@ -238,19 +337,16 @@ export class Zone2_Stack extends Phaser.Scene {
     this.busy = true
     const popIdx = this.topIndex
     const block = this.blocks[popIdx]
-    const by = this.blockY(popIdx)
 
+    useGameStore.getState().incPops()
     bus.emit('dsa:operation', { op: `pop() → ${block.value}`, zone: 'stack' })
-    bus.emit('dsa:step', undefined)
 
-    // particles
-    this.burstDebris(STACK_CX, by)
+    this.burstDebris(STACK_CX, this.blockY(popIdx))
 
-    // fade out block
     this.tweens.add({
       targets: [block.sprite, block.valText, block.label],
       alpha: 0,
-      duration: 350,
+      duration: 200,
       ease: 'Power2',
       onComplete: () => {
         block.sprite.destroy()
@@ -259,39 +355,46 @@ export class Zone2_Stack extends Phaser.Scene {
         delete this.blocks[popIdx]
 
         this.topIndex = popIdx - 1
-
-        if (this.topIndex < 0) {
-          // StackUnderflow — no platform left
-          this.refreshTopPlatform()
-          this.onUnderflow()
-          return
-        }
-
         this.refreshTopPlatform()
         this.busy = false
-        // player falls via gravity to new top
       },
     })
   }
 
-  /* ── death ──────────────────────────────── */
+  /* ── outcomes ──────────────────────────── */
 
-  private onUnderflow() {
+  private onOverflow() {
     this.dead = true
+    this.pushTimer?.remove()
+    this.countdownTimer?.remove()
 
-    this.time.delayedCall(800, () => {
-      this.cameras.main.shake(600, 0.03)
-      this.cameras.main.flash(600, 255, 0, 0)
+    this.cameras.main.shake(800, 0.04)
+    this.cameras.main.flash(600, 255, 0, 0)
 
-      useGameStore.getState().setDeath(
-        'STACK UNDERFLOW',
-        'pop() called on empty stack — no platform remains',
-      )
-      bus.emit('dsa:operation', { op: 'FATAL: StackUnderflow', zone: 'stack' })
+    useGameStore.getState().setDeath(
+      'STACK OVERFLOW',
+      `push() exceeded capacity — stack reached ceiling at height ${this.topIndex + 1}`,
+    )
+    bus.emit('dsa:operation', { op: 'FATAL: StackOverflow', zone: 'stack' })
+  }
+
+  private onVictory() {
+    this.dead = true
+    this.pushTimer?.remove()
+    this.countdownTimer?.remove()
+
+    const s = useGameStore.getState()
+    s.setMode('done')
+    s.setOutcome('victory')
+
+    this.cameras.main.flash(500, 0, 255, 100)
+    bus.emit('dsa:operation', {
+      op: `SURVIVED — ${s.pops} pops in ${SURVIVAL_SECS}s`,
+      zone: 'stack',
     })
   }
 
-  /* ── particles ──────────────────────────── */
+  /* ── particles ─────────────────────────── */
 
   private burstDebris(x: number, y: number) {
     this.add.particles(x, y, 'debris', {
@@ -305,10 +408,9 @@ export class Zone2_Stack extends Phaser.Scene {
     }).explode()
   }
 
-  /* ── textures ───────────────────────────── */
+  /* ── textures ──────────────────────────── */
 
   private generateTextures() {
-    // stone block
     const sg = this.make.graphics({ x: 0, y: 0 })
     sg.fillStyle(0x3a3530)
     sg.fillRect(0, 0, BLOCK, BLOCK)
@@ -329,7 +431,6 @@ export class Zone2_Stack extends Phaser.Scene {
     sg.generateTexture('stone', BLOCK, BLOCK)
     sg.destroy()
 
-    // debris particle
     const dg = this.make.graphics({ x: 0, y: 0 })
     dg.fillStyle(0x8a7f70)
     dg.fillRect(0, 0, 4, 4)
@@ -337,7 +438,7 @@ export class Zone2_Stack extends Phaser.Scene {
     dg.destroy()
   }
 
-  /* ── dungeon walls ──────────────────────── */
+  /* ── dungeon walls ─────────────────────── */
 
   private drawWalls() {
     const wg = this.add.graphics().setDepth(1)
@@ -366,7 +467,7 @@ export class Zone2_Stack extends Phaser.Scene {
     g.strokePath()
   }
 
-  /* ── torches ────────────────────────────── */
+  /* ── torches ───────────────────────────── */
 
   private drawTorches() {
     const tg = this.add.graphics().setDepth(1)

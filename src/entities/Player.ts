@@ -13,6 +13,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
   private lastVx = 0
   public canJump = true
+  public canMove = true
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, 'player')
@@ -43,8 +44,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
                  Phaser.Input.Keyboard.JustDown(this.wasd.up)
 
     let vx = 0
-    if (goLeft) vx = -SPEED
-    else if (goRight) vx = SPEED
+    if (this.canMove) {
+      if (goLeft) vx = -SPEED
+      else if (goRight) vx = SPEED
+    }
     body.setVelocityX(vx)
 
     if (this.canJump && jump && onGround) {
