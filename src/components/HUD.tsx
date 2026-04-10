@@ -64,19 +64,23 @@ export function HUD() {
 
   // mode labels
   const isStack = currentZone === 'stack'
+  const isList = currentZone === 'list'
   const modeLabel = isStack
     ? 'SURVIVAL — pop to stay alive'
+    : isList ? 'TRAVERSAL — RIGHT arrow to move'
     : mode === 'free' ? 'FREE — click any box'
     : mode === 'binary' ? 'BINARY — Space / click mid'
     : 'DONE'
   const modeColor = isStack
     ? 'text-red-400 border-red-800'
+    : isList ? 'text-cyan-400 border-cyan-800'
     : mode === 'free' ? 'text-yellow-400 border-yellow-800'
     : mode === 'binary' ? 'text-cyan-400 border-cyan-800'
     : 'text-green-400 border-green-800'
 
   if (outcome === 'death') return <DeathScreen onRestart={handleRestart} />
   if (outcome === 'victory' && isStack) return <StackVictoryScreen pops={pops} />
+  if (outcome === 'victory' && isList) return <ListVictoryScreen traversals={allOps.length} />
   if (outcome === 'victory') return (
     <VictoryScreen
       target={target}
@@ -114,7 +118,12 @@ export function HUD() {
 
       {/* counters — top right */}
       <div className="absolute top-4 right-4 pointer-events-none font-mono text-sm bg-black/60 border border-cyan-900 rounded px-3 py-1.5 select-none space-y-0.5">
-        {isStack ? (
+        {isList ? (
+          <>
+            <div className="text-cyan-400">traversals: {allOps.filter(o => o.op.includes('ptr = ptr->next')).length}</div>
+            <div className="text-green-600 text-xs mt-1">→ / D: traverse</div>
+          </>
+        ) : isStack ? (
           <>
             <div className="text-orange-400">pops: {pops}</div>
             <div className="text-cyan-400 text-xs">
@@ -329,6 +338,84 @@ function StackVictoryScreen({ pops }: { pops: number }) {
               <div className="text-green-600 mb-2">// algorithm</div>
               <pre className="text-orange-400/90 whitespace-pre leading-relaxed text-[11px]">
                 {STACK_PSEUDOCODE}
+              </pre>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center">
+          <div className="font-mono text-xs text-green-700 mb-3">more zones coming soon</div>
+          <button
+            onClick={() => {
+              useGameStore.getState().resetSearch()
+              bus.emit('dsa:restart', undefined)
+            }}
+            className="font-mono text-sm text-green-400 border border-green-700 bg-green-950/40 px-8 py-2.5 rounded
+                       hover:bg-green-900/50 hover:text-green-300 hover:border-green-400
+                       transition-colors cursor-pointer tracking-wider"
+          >
+            REPLAY ZONE
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════ */
+/*  ZONE 3 (LINKED LIST) VICTORY SCREEN     */
+/* ═══════════════════════════════════════════ */
+
+function ListVictoryScreen({ traversals }: { traversals: number }) {
+  const LIST_PSEUDOCODE = `// linked list traversal
+ptr = head
+
+while ptr != null:
+  visit(ptr->value)
+  ptr = ptr->next    // follow the arrow
+
+// properties:
+// - singly linked
+// - each node → next
+// - access: O(n) sequential
+// - insert/delete: O(1) if ptr known`
+
+  return (
+    <div className="absolute inset-0 bg-black/90 flex items-center justify-center z-50">
+      <div className="max-w-2xl w-full px-6">
+        <div className="text-center mb-6">
+          <div className="font-mono text-xs text-green-700 tracking-[0.4em] mb-2">ZONE 3</div>
+          <div className="font-mono text-4xl font-bold text-green-400 tracking-widest">
+            COMPLETE
+          </div>
+        </div>
+
+        <div className="flex gap-4 mb-6">
+          <div className="flex-1 space-y-4">
+            <div className="font-mono text-sm bg-black/60 border border-green-900/60 rounded p-3 space-y-1.5">
+              <div className="text-green-600 text-xs mb-2">// stats</div>
+              <div className="text-cyan-400">
+                <span className="text-green-600">traversals:</span> {traversals}
+              </div>
+              <div className="text-green-300">
+                <span className="text-green-600">reached:</span> end of list (null)
+              </div>
+              <div className="border-t border-green-900/40 pt-1.5 mt-1.5 text-green-300">
+                <span className="text-green-600">data structure:</span>{' '}
+                <span className="text-cyan-400">Linked List (Singly)</span>
+              </div>
+              <div className="text-green-300">
+                <span className="text-green-600">traversal:</span>{' '}
+                <span className="text-green-700">O(n) — must follow chain</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1">
+            <div className="font-mono text-xs bg-black/60 border border-green-900/60 rounded p-3 h-full">
+              <div className="text-green-600 mb-2">// algorithm</div>
+              <pre className="text-cyan-400/90 whitespace-pre leading-relaxed text-[11px]">
+                {LIST_PSEUDOCODE}
               </pre>
             </div>
           </div>
