@@ -19,7 +19,7 @@ export default function App() {
   }, [currentZone, togglePause])
 
   return (
-    <div className="relative w-[1280px] h-[720px]">
+    <div className="relative w-screen h-screen bg-black overflow-hidden">
       <PhaserGame />
       <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4">
         <div className="pointer-events-auto self-start bg-black/60 text-white text-sm px-3 py-1 rounded">

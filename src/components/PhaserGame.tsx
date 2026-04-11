@@ -6,17 +6,6 @@ import { Zone1_Array } from '../scenes/Zone1_Array'
 import { Zone2_Stack } from '../scenes/Zone2_Stack'
 import { Zone3_LinkedList } from '../scenes/Zone3_LinkedList'
 
-const GAME_CONFIG: Phaser.Types.Core.GameConfig = {
-  type: Phaser.CANVAS,
-  width: 1280,
-  height: 720,
-  physics: {
-    default: 'arcade',
-    arcade: { debug: false },
-  },
-  scene: [BootScene, MainMenuScene, Zone1_Array, Zone2_Stack, Zone3_LinkedList],
-}
-
 export function PhaserGame() {
   const containerRef = useRef<HTMLDivElement>(null)
   const gameRef = useRef<Phaser.Game | null>(null)
@@ -25,8 +14,19 @@ export function PhaserGame() {
     if (!containerRef.current || gameRef.current) return
 
     gameRef.current = new Phaser.Game({
-      ...GAME_CONFIG,
-      parent: containerRef.current,
+      type: Phaser.CANVAS,
+      physics: {
+        default: 'arcade',
+        arcade: { debug: false },
+      },
+      scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: 1280,
+        height: 720,
+        parent: containerRef.current,
+      },
+      scene: [BootScene, MainMenuScene, Zone1_Array, Zone2_Stack, Zone3_LinkedList],
     })
 
     return () => {
@@ -35,5 +35,5 @@ export function PhaserGame() {
     }
   }, [])
 
-  return <div ref={containerRef} />
+  return <div ref={containerRef} className="w-full h-full" />
 }
