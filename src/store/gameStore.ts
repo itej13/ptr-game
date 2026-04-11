@@ -2,7 +2,15 @@ import { create } from 'zustand'
 import type { StateCreator } from 'zustand'
 
 export type SearchMode = 'free' | 'binary' | 'done'
-export type Outcome = 'playing' | 'victory' | 'death'
+export type Outcome = 'playing' | 'victory' | 'death' | 'defeat'
+
+export interface CodexEntry {
+  zone: string
+  name: string
+  oneLiner: string
+  pseudocode: string
+  bigO: { op: string; time: string }[]
+}
 
 export interface GameState {
   currentZone: string
@@ -18,6 +26,12 @@ export interface GameState {
   deathDetail: string
   survivalTime: number
   pops: number
+
+  paused: boolean
+  togglePause: () => void
+
+  codex: CodexEntry[]
+  unlockCodex: (entry: CodexEntry) => void
 
   setTarget: (t: number) => void
   setMode: (m: SearchMode) => void
@@ -45,6 +59,17 @@ const storeCreator: StateCreator<GameState> = (set) => ({
   deathDetail: '',
   survivalTime: 30,
   pops: 0,
+
+  paused: false,
+  togglePause: () => set((s) => ({ paused: !s.paused })),
+
+  codex: [],
+  unlockCodex: (entry: CodexEntry) =>
+    set((s) => ({
+      codex: s.codex.some((e) => e.zone === entry.zone)
+        ? s.codex
+        : [...s.codex, entry],
+    })),
 
   setTarget: (target: number) => set({ target }),
   setMode: (mode: SearchMode) => set({ mode }),

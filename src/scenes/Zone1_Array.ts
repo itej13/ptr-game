@@ -2,6 +2,9 @@ import Phaser from 'phaser'
 import { Player } from '../entities/Player'
 import { bus } from '../OperationBus'
 import { useGameStore } from '../store/gameStore'
+import { CODEX_ZONE1 } from '../store/codexEntries'
+import { soundManager } from '../audio/soundManager'
+import { virtualInput } from '../input/virtualInput'
 
 const BOX_SIZE = 64
 const BOX_GAP = 40
@@ -21,6 +24,7 @@ export class Zone1_Array extends Phaser.Scene {
   private targetIndex = 0
   private mode: 'free' | 'binary' | 'done' = 'free'
   private outcome: 'playing' | 'victory' | 'death' = 'playing'
+  private droneHandle?: { stop: () => void }
 
   // binary search
   private bsLeft = 0
@@ -106,22 +110,27 @@ export class Zone1_Array extends Phaser.Scene {
 
     bus.emit('dsa:operation', { op: `find ${this.target} — free mode`, zone: 'array' })
 
+    // ambient drone
+    this.droneHandle = soundManager.droneStart()
+
     // restart / next zone wiring
     const onRestart = () => this.scene.restart()
     const onNext = () => this.scene.start('Zone2_Stack')
     bus.on('dsa:restart', onRestart)
     bus.on('dsa:nextzone', onNext)
     this.events.on('shutdown', () => {
+      this.droneHandle?.stop()
       bus.off('dsa:restart', onRestart)
       bus.off('dsa:nextzone', onNext)
     })
   }
 
   update() {
+    if (useGameStore.getState().paused) return
     if (this.outcome !== 'playing') return
     this.player.update()
 
-    if (this.mode === 'binary' && Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+    if (this.mode === 'binary' && (Phaser.Input.Keyboard.JustDown(this.spaceKey) || virtualInput.consumeSpace())) {
       this.doBinaryStep()
     }
   }
@@ -147,6 +156,7 @@ export class Zone1_Array extends Phaser.Scene {
 
     // free mode
     this.teleportTo(index)
+    soundManager.click()
     useGameStore.getState().incFreeSteps()
     bus.emit('dsa:operation', { op: `arr[${index}] = ${this.values[index]}`, zone: 'array' })
     bus.emit('dsa:step', undefined)
@@ -168,6 +178,7 @@ export class Zone1_Array extends Phaser.Scene {
   /* ── free → binary ──────────────────────── */
 
   private onFreeFound() {
+    soundManager.ping()
     bus.emit('dsa:operation', {
       op: `found in ${useGameStore.getState().freeSteps} free steps`,
       zone: 'array',
@@ -282,6 +293,7 @@ export class Zone1_Array extends Phaser.Scene {
   /* ── outcomes ───────────────────────────── */
 
   private onVictory() {
+    soundManager.victory()
     this.outcome = 'victory'
     this.mode = 'done'
     this.stopEnemy()
@@ -289,6 +301,7 @@ export class Zone1_Array extends Phaser.Scene {
     const s = useGameStore.getState()
     s.setMode('done')
     s.setOutcome('victory')
+    s.unlockCodex(CODEX_ZONE1)
 
     this.cameras.main.flash(500, 0, 255, 100)
     bus.emit('dsa:operation', {
@@ -298,6 +311,7 @@ export class Zone1_Array extends Phaser.Scene {
   }
 
   private onDeath() {
+    soundManager.buzz()
     this.outcome = 'death'
     this.stopEnemy()
 

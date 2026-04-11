@@ -2,6 +2,9 @@ import Phaser from 'phaser'
 import { Player } from '../entities/Player'
 import { bus } from '../OperationBus'
 import { useGameStore } from '../store/gameStore'
+import { CODEX_ZONE2 } from '../store/codexEntries'
+import { soundManager } from '../audio/soundManager'
+import { virtualInput } from '../input/virtualInput'
 
 const BLOCK = 64
 const INIT_COUNT = 3
@@ -35,6 +38,7 @@ export class Zone2_Stack extends Phaser.Scene {
   private topHighlight!: Phaser.GameObjects.Graphics
   private busy = false
   private dead = false
+  private droneHandle?: { stop: () => void }
 
   // survival
   private elapsed = 0
@@ -138,10 +142,14 @@ export class Zone2_Stack extends Phaser.Scene {
     this.sKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.S)
     this.xKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X)
 
+    // ambient drone
+    this.droneHandle = soundManager.droneStart()
+
     // restart wiring
     const onRestart = () => this.scene.restart()
     bus.on('dsa:restart', onRestart)
     this.events.on('shutdown', () => {
+      this.droneHandle?.stop()
       bus.off('dsa:restart', onRestart)
       this.pushTimer?.remove()
       this.countdownTimer?.remove()
@@ -157,6 +165,7 @@ export class Zone2_Stack extends Phaser.Scene {
   }
 
   update() {
+    if (useGameStore.getState().paused) return
     if (this.dead) return
     this.player.update()
 
@@ -172,7 +181,7 @@ export class Zone2_Stack extends Phaser.Scene {
 
     if (this.busy) return
     const JD = Phaser.Input.Keyboard.JustDown
-    if (JD(this.spaceKey) || JD(this.downKey) || JD(this.sKey) || JD(this.xKey)) {
+    if (JD(this.spaceKey) || JD(this.downKey) || JD(this.sKey) || JD(this.xKey) || virtualInput.consumeSpace()) {
       this.doPop()
     }
   }
@@ -271,6 +280,7 @@ export class Zone2_Stack extends Phaser.Scene {
   /* ── PUSH (auto) ───────────────────────── */
 
   private doPush() {
+    soundManager.click()
     this.busy = true
     const newIdx = this.topIndex + 1
     const newY = this.blockY(newIdx)
@@ -334,6 +344,7 @@ export class Zone2_Stack extends Phaser.Scene {
   private doPop() {
     if (this.topIndex < 0) return
 
+    soundManager.click()
     this.busy = true
     const popIdx = this.topIndex
     const block = this.blocks[popIdx]
@@ -364,6 +375,7 @@ export class Zone2_Stack extends Phaser.Scene {
   /* ── outcomes ──────────────────────────── */
 
   private onOverflow() {
+    soundManager.buzz()
     this.dead = true
     this.pushTimer?.remove()
     this.countdownTimer?.remove()
@@ -379,6 +391,7 @@ export class Zone2_Stack extends Phaser.Scene {
   }
 
   private onVictory() {
+    soundManager.victory()
     this.dead = true
     this.pushTimer?.remove()
     this.countdownTimer?.remove()
@@ -386,6 +399,7 @@ export class Zone2_Stack extends Phaser.Scene {
     const s = useGameStore.getState()
     s.setMode('done')
     s.setOutcome('victory')
+    s.unlockCodex(CODEX_ZONE2)
 
     this.cameras.main.flash(500, 0, 255, 100)
     bus.emit('dsa:operation', {

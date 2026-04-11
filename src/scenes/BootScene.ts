@@ -15,7 +15,19 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
-    console.log('Phaser booted')
-    this.scene.start('Zone1_Array')
+    // Wait for JetBrains Mono before rendering the main menu title.
+    // Falls back immediately if the font can't be loaded.
+    let started = false
+    const go = () => {
+      if (started) return
+      started = true
+      this.scene.start('MainMenuScene')
+    }
+
+    const fallback = setTimeout(go, 2000)
+    document.fonts.load('bold 92px "JetBrains Mono"').finally(() => {
+      clearTimeout(fallback)
+      go()
+    })
   }
 }

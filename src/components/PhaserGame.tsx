@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import Phaser from 'phaser'
 import { BootScene } from '../scenes/BootScene'
+import { MainMenuScene } from '../scenes/MainMenuScene'
 import { Zone1_Array } from '../scenes/Zone1_Array'
 import { Zone2_Stack } from '../scenes/Zone2_Stack'
 import { Zone3_LinkedList } from '../scenes/Zone3_LinkedList'
@@ -13,7 +14,7 @@ const GAME_CONFIG: Phaser.Types.Core.GameConfig = {
     default: 'arcade',
     arcade: { debug: false },
   },
-  scene: [BootScene, Zone1_Array, Zone2_Stack, Zone3_LinkedList],
+  scene: [BootScene, MainMenuScene, Zone1_Array, Zone2_Stack, Zone3_LinkedList],
 }
 
 export function PhaserGame() {

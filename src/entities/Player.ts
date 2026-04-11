@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { bus } from '../OperationBus'
+import { virtualInput } from '../input/virtualInput'
 
 const SPEED = 200
 const JUMP_VELOCITY = -420
@@ -38,10 +39,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const { left, right, up } = this.cursors
     const onGround = body.blocked.down
 
-    const goLeft = left.isDown || this.wasd.left.isDown
-    const goRight = right.isDown || this.wasd.right.isDown
+    const goLeft = left.isDown || this.wasd.left.isDown || virtualInput.left
+    const goRight = right.isDown || this.wasd.right.isDown || virtualInput.right
     const jump = Phaser.Input.Keyboard.JustDown(up) ||
-                 Phaser.Input.Keyboard.JustDown(this.wasd.up)
+                 Phaser.Input.Keyboard.JustDown(this.wasd.up) ||
+                 virtualInput.consumeUp()
 
     let vx = 0
     if (this.canMove) {
