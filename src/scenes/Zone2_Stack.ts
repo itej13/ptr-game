@@ -145,12 +145,15 @@ export class Zone2_Stack extends Phaser.Scene {
     // ambient drone
     this.droneHandle = soundManager.droneStart()
 
-    // restart wiring
+    // restart / next zone wiring
     const onRestart = () => this.scene.restart()
+    const onNext = () => this.scene.start('Zone3_LinkedList')
     bus.on('dsa:restart', onRestart)
+    bus.on('dsa:nextzone', onNext)
     this.events.on('shutdown', () => {
       this.droneHandle?.stop()
       bus.off('dsa:restart', onRestart)
+      bus.off('dsa:nextzone', onNext)
       this.pushTimer?.remove()
       this.countdownTimer?.remove()
     })

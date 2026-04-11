@@ -573,14 +573,13 @@ function StackVictoryScreen({ pops }: { pops: number }) {
         </div>
 
         <div className="text-center">
-          <div className="font-mono text-xs text-green-700 mb-3">more zones coming soon</div>
           <button
-            onClick={() => { useGameStore.getState().resetSearch(); bus.emit('dsa:restart', undefined) }}
+            onClick={() => { useGameStore.getState().resetSearch(); bus.emit('dsa:nextzone', undefined) }}
             className="font-mono text-sm text-green-400 border border-green-700 bg-green-950/40 px-8 py-2.5 rounded
                        hover:bg-green-900/50 hover:text-green-300 hover:border-green-400
                        transition-colors cursor-pointer tracking-wider"
           >
-            REPLAY ZONE
+            NEXT ZONE →
           </button>
         </div>
       </div>
