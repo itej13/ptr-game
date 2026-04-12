@@ -5,6 +5,8 @@ import { MainMenuScene } from '../scenes/MainMenuScene'
 import { Zone1_Array } from '../scenes/Zone1_Array'
 import { Zone2_Stack } from '../scenes/Zone2_Stack'
 import { Zone3_LinkedList } from '../scenes/Zone3_LinkedList'
+import { ConceptPauseManager } from '../systems/ConceptPauseManager'
+import '../systems/ConceptPauseResumeHandler'
 
 export function PhaserGame() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -19,6 +21,9 @@ export function PhaserGame() {
         default: 'arcade',
         arcade: { debug: false },
       },
+      input: {
+        activePointers: 3,
+      },
       scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -29,7 +34,15 @@ export function PhaserGame() {
       scene: [BootScene, MainMenuScene, Zone1_Array, Zone2_Stack, Zone3_LinkedList],
     })
 
+    ConceptPauseManager.init(gameRef.current)
+
+    const onResize = () => {
+      gameRef.current?.scale.resize(window.innerWidth, window.innerHeight)
+    }
+    window.addEventListener('resize', onResize)
+
     return () => {
+      window.removeEventListener('resize', onResize)
       gameRef.current?.destroy(true)
       gameRef.current = null
     }

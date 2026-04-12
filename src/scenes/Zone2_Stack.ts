@@ -5,6 +5,7 @@ import { useGameStore } from '../store/gameStore'
 import { CODEX_ZONE2 } from '../store/codexEntries'
 import { soundManager } from '../audio/soundManager'
 import { virtualInput } from '../input/virtualInput'
+import { ConceptPauseManager } from '../systems/ConceptPauseManager'
 
 const BLOCK = 64
 const INIT_COUNT = 3
@@ -58,6 +59,7 @@ export class Zone2_Stack extends Phaser.Scene {
   }
 
   create() {
+    ConceptPauseManager.resetForZone()
     this.cameras.main.setBackgroundColor('#08080e')
     this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H)
     this.dead = false

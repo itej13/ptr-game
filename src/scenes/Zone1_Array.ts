@@ -5,6 +5,7 @@ import { useGameStore } from '../store/gameStore'
 import { CODEX_ZONE1 } from '../store/codexEntries'
 import { soundManager } from '../audio/soundManager'
 import { virtualInput } from '../input/virtualInput'
+import { ConceptPauseManager } from '../systems/ConceptPauseManager'
 
 const BOX_SIZE = 64
 const BOX_GAP = 40
@@ -45,6 +46,7 @@ export class Zone1_Array extends Phaser.Scene {
   }
 
   create() {
+    ConceptPauseManager.resetForZone()
     this.cameras.main.setBackgroundColor('#0d0d0d')
     this.physics.world.setBounds(0, 0, WORLD_W, 720)
     this.outcome = 'playing'

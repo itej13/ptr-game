@@ -3,6 +3,9 @@ import { bus, type DsaOperation, type MapState, type MapNode, type MapEdge } fro
 import { useGameStore } from '../store/gameStore'
 import type { GameState } from '../store/gameStore'
 
+const IS_MOBILE = typeof window !== 'undefined' &&
+  ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+
 const BS_PSEUDOCODE = `function binarySearch(arr, target):
   lo = 0
   hi = arr.length - 1
@@ -105,12 +108,14 @@ function ComplexityMeter() {
 
   return (
     <div
-      className={`absolute bottom-4 left-4 pointer-events-none font-mono border rounded-md px-3 py-2 select-none
+      className={`absolute left-4 pointer-events-none font-mono border rounded-md select-none
         transition-[transform,background-color,border-color] duration-200
+        ${IS_MOBILE ? 'px-2 py-1.5' : 'px-3 py-2'}
         ${p.wrap} ${bumped ? 'scale-[1.06]' : 'scale-100'}`}
+      style={{ bottom: IS_MOBILE ? '170px' : '16px' }}
     >
       <div className="text-gray-600 text-[9px] leading-none mb-1 tracking-widest uppercase">complexity</div>
-      <div className={`text-[22px] font-bold leading-none tracking-wide ${p.main}`}>{info.label}</div>
+      <div className={`font-bold leading-none tracking-wide ${IS_MOBILE ? 'text-[17px]' : 'text-[22px]'} ${p.main}`}>{info.label}</div>
       <div className={`text-[10px] mt-1 leading-none ${p.sub}`}>{info.sublabel}</div>
     </div>
   )
@@ -300,7 +305,7 @@ export function HUD() {
     return () => { bus.off('dsa:operation', onOp) }
   }, [])
 
-  const recentOps = allOps.slice(-5)
+  const recentOps = allOps.slice(IS_MOBILE ? -4 : -5)
   const bsOps = allOps.filter((o) => o.op.startsWith('bs:'))
 
   const handleRestart = () => {
@@ -395,8 +400,12 @@ export function HUD() {
         </div>
       </div>
 
-      {/* ops log — bottom right */}
-      <div className="absolute bottom-4 right-4 pointer-events-none font-mono text-xs text-green-400 bg-black/70 border border-green-900 rounded p-2 w-72 space-y-0.5">
+      {/* ops log — bottom right (lifted above touch controls on mobile) */}
+      <div
+        className={`absolute right-4 pointer-events-none font-mono text-green-400 bg-black/70 border border-green-900 rounded p-2 space-y-0.5
+          ${IS_MOBILE ? 'text-[10px] w-[260px]' : 'text-xs w-72'}`}
+        style={{ bottom: IS_MOBILE ? '170px' : '16px' }}
+      >
         <div className="text-green-600 mb-1 select-none">// ops log</div>
         {recentOps.length === 0
           ? <div className="text-green-900">— idle —</div>

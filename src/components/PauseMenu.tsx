@@ -15,7 +15,7 @@ export function PauseMenu() {
 
   return (
     <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/85 select-none">
-      <div className="w-[680px] max-h-[560px] bg-[#060c08] border border-green-900/60 rounded-lg overflow-hidden flex flex-col font-mono">
+      <div className="w-[680px] max-w-[90vw] max-h-[80vh] bg-[#060c08] border border-green-900/60 rounded-lg overflow-hidden flex flex-col font-mono">
 
         {/* tabs */}
         <div className="flex border-b border-green-900/40">

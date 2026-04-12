@@ -6,6 +6,7 @@ import { useGameStore } from '../store/gameStore'
 import { CODEX_ZONE3 } from '../store/codexEntries'
 import { soundManager } from '../audio/soundManager'
 import { virtualInput } from '../input/virtualInput'
+import { ConceptPauseManager } from '../systems/ConceptPauseManager'
 
 const NODE_RADIUS = 48
 const NODE_SPACING = 280
@@ -71,6 +72,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
   }
 
   create() {
+    ConceptPauseManager.resetForZone()
     this.cameras.main.setBackgroundColor('#0a0a10')
     this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H)
     this.dead = false
