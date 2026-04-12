@@ -155,6 +155,9 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.player.canMove = false
 
     this.physics.add.collider(this.player, this.platforms)
+    // Zone 3 has no jumping — permanently kill gravity so the player
+    // never drifts off nodes between traversal tweens.
+    ;(this.player.body as Phaser.Physics.Arcade.Body).setAllowGravity(false)
     this.refreshListLayout({ syncPlayer: true })
     this.cameras.main.startFollow(this.player, false, 0.08, 0)
 
@@ -246,12 +249,8 @@ export class Zone3_LinkedList extends Phaser.Scene {
   private syncPlayerToCurrent() {
     if (!this.player || !this.current) return
     const body = this.player.body as Phaser.Physics.Arcade.Body
-    const allowGravity = body.allowGravity
-    body.setAllowGravity(false)
     body.reset(this.current.platform.x, this.playerYFor(this.current))
     body.setVelocity(0, 0)
-    body.updateFromGameObject()
-    body.setAllowGravity(allowGravity)
   }
 
   private updateWorldBounds() {
@@ -505,10 +504,6 @@ export class Zone3_LinkedList extends Phaser.Scene {
     const next = this.current.next
     const isBackEdge = this.current === this.cycleTailNode
 
-    const body = this.player.body as Phaser.Physics.Arcade.Body
-    body.setAllowGravity(false)
-    body.setVelocity(0, 0)
-
     this.tweens.add({
       targets: this.player,
       x: next.platform.x,
@@ -518,8 +513,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
       onComplete: () => {
         this.current = next
         this.traversals++
-        body.setAllowGravity(true)
-        body.setVelocity(0, 0)
+        this.syncPlayerToCurrent()
         this.busy = false
         this.emitMapState()
 
@@ -558,9 +552,6 @@ export class Zone3_LinkedList extends Phaser.Scene {
     ).setScrollFactor(0).setOrigin(0.5).setDepth(20)
     this.time.delayedCall(2500, () => banner.destroy())
 
-    const body = this.player.body as Phaser.Physics.Arcade.Body
-    body.setAllowGravity(false)
-    body.setVelocity(0, 0)
     this.tweens.add({
       targets: this.player,
       x: this.head.platform.x,
@@ -569,8 +560,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
       ease: 'Power2',
       onComplete: () => {
         this.current = this.head
-        body.setAllowGravity(true)
-        body.setVelocity(0, 0)
+        this.syncPlayerToCurrent()
         this.emitMapState()
       },
     })
@@ -601,10 +591,6 @@ export class Zone3_LinkedList extends Phaser.Scene {
 
     this.busy = true
 
-    const body = this.player.body as Phaser.Physics.Arcade.Body
-    body.setAllowGravity(false)
-    body.setVelocity(0, 0)
-
     this.tweens.add({
       targets: this.player,
       x: newSlow.platform.x,
@@ -631,8 +617,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
         this.slowNode = newSlow
         this.ghostNode = newFast
         this.current = newSlow
-        body.setAllowGravity(true)
-        body.setVelocity(0, 0)
+        this.syncPlayerToCurrent()
         this.busy = false
         this.emitMapState()
 
@@ -697,9 +682,6 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.corruptionActive = true
     this.loopMode = 'none'
 
-    const body = this.player.body as Phaser.Physics.Arcade.Body
-    body.setAllowGravity(false)
-    body.setVelocity(0, 0)
     this.tweens.add({
       targets: this.player,
       x: this.head.platform.x,
@@ -708,8 +690,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
       ease: 'Power2',
       onComplete: () => {
         this.current = this.head
-        body.setAllowGravity(true)
-        body.setVelocity(0, 0)
+        this.syncPlayerToCurrent()
         this.emitMapState()
       },
     })
@@ -863,10 +844,6 @@ export class Zone3_LinkedList extends Phaser.Scene {
     const targetNode = this.nodeList[targetIdx]
     this.busy = true
 
-    const body = this.player.body as Phaser.Physics.Arcade.Body
-    body.setAllowGravity(false)
-    body.setVelocity(0, 0)
-
     this.tweens.add({
       targets: this.player,
       x: targetNode.platform.x,
@@ -875,8 +852,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
       ease: 'Power2',
       onComplete: () => {
         this.current = targetNode
-        body.setAllowGravity(true)
-        body.setVelocity(0, 0)
+        this.syncPlayerToCurrent()
         this.busy = false
         this.emitMapState()
 

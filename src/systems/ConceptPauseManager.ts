@@ -57,6 +57,13 @@ const PAUSE_TRIGGERS: PauseTrigger[] = [
   },
   // ── Linked List Zone ────────────────────────────────────────────────
   {
+    triggerKey: 'll_zone_intro',
+    match: ({ op, zone }) => op.includes('Zone 3') && zone === 'list',
+    title: 'Zone 3 — The Jungle of Nodes',
+    conceptBody:
+      "Arrays store every element in one contiguous block of memory. Element 0 sits right next to element 1, which sits right next to element 2 — so arr[5] jumps directly to slot 5 in a single step: O(1) random access.\n\nLinked lists throw that out completely. Each node can live anywhere in memory — there is no guaranteed adjacency. The only connection between nodes is a 'next' pointer: a stored memory address that says \"your next node is over there.\" Follow the pointer to find it. This is like a treasure hunt where each clue only reveals the location of the next clue.\n\nOr think of train cars: each car is coupled to the one behind it. The couplers are the pointers. Unhook one coupler and you splice in a new car — no need to slide the whole train.\n\nThe trade-offs:\n• No random access — to reach node #5 you must walk nodes 1→2→3→4→5. O(n) traversal.\n• O(1) insertion and deletion — rewiring two pointers is all it takes, regardless of list size.\n• Dynamic size — nodes are allocated individually, wherever memory is free.\n\nYou ARE the pointer. Press → to follow each 'next' link, one node at a time. Watch for cycle vines, a corruption entity severing pointers, and the NULL sentinel — the signal that the chain has ended.",
+  },
+  {
     triggerKey: 'll_first_traverse',
     match: ({ op, zone }) => op.includes('ptr = ptr->next') && zone === 'list',
     title: 'Following the Next Pointer',
