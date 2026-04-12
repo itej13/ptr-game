@@ -13,7 +13,12 @@ const NODE_SPACING = 280
 const WORLD_W = 300 + 8 * NODE_SPACING
 const WORLD_H = 1800
 const FIRST_X = 220
-const PLAYER_Y = 400
+const NODE_BASE_Y = 340
+const PLAYER_NODE_OFFSET = 45
+const GHOST_NODE_OFFSET = 72
+const GHOST_LABEL_OFFSET = 112
+const CORRUPTOR_OFFSET = 90
+const WORLD_PADDING_RIGHT = 360
 
 interface LinkedListNode {
   value: number
@@ -45,6 +50,8 @@ export class Zone3_LinkedList extends Phaser.Scene {
   private ghostSprite: Phaser.GameObjects.Image | null = null
   private ghostLabelGfx: Phaser.GameObjects.Text | null = null
   private caughtHint: Phaser.GameObjects.Text | null = null
+  private cycleVineColor = 0x9900ff
+  private nullText: Phaser.GameObjects.Text | null = null
 
   // ── corruption enemy state ───────────────────────────
   private corruptionActive = false
@@ -66,6 +73,8 @@ export class Zone3_LinkedList extends Phaser.Scene {
   private deleteKey!: Phaser.Input.Keyboard.Key
   private cutKey!: Phaser.Input.Keyboard.Key
   private repairKey!: Phaser.Input.Keyboard.Key
+  private insertLessonShown = false
+  private deleteLessonShown = false
 
   constructor() {
     super({ key: 'Zone3_LinkedList' })
@@ -89,6 +98,8 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.ghostLabelGfx = null
     this.cycleVineGfx = null
     this.caughtHint = null
+    this.cycleVineColor = 0x9900ff
+    this.nullText = null
     this.corruptionActive = false
     this.corruptionFinished = false
     this.severedOriginals.clear()
@@ -99,6 +110,8 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.corruptorGfx = null
     this.corruptionCounterText = null
     this.corruptionHintText = null
+    this.insertLessonShown = false
+    this.deleteLessonShown = false
 
     const store = useGameStore.getState()
     store.resetSearch()
@@ -115,7 +128,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
     let index = 0
     while (node) {
       node.index = index
-      const sprite = this.platforms.create(x, PLAYER_Y, 'node') as Phaser.Physics.Arcade.Sprite
+      const sprite = this.platforms.create(x, NODE_BASE_Y, 'node') as Phaser.Physics.Arcade.Sprite
       node.platform = sprite
       this.nodeList.push(node)
       x += NODE_SPACING
@@ -134,16 +147,15 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.cycleTailNode = this.nodeList[7]
     this.cycleEntryNode = this.nodeList[4]
     this.cycleTailNode.next = this.cycleEntryNode
-    this.drawCycleVine(0x9900ff)
 
     this.current = this.head
-    this.player = new Player(this, this.head.platform.x, PLAYER_Y)
+    this.player = new Player(this, this.head.platform.x, this.playerYFor(this.head))
     this.player.setDepth(10)
     this.player.canJump = false
     this.player.canMove = false
 
     this.physics.add.collider(this.player, this.platforms)
-    this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H)
+    this.refreshListLayout({ syncPlayer: true })
     this.cameras.main.startFollow(this.player, false, 0.08, 0)
 
     this.rightKey  = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT)
@@ -164,7 +176,10 @@ export class Zone3_LinkedList extends Phaser.Scene {
       bus.off('dsa:restart', onRestart)
     })
 
-    bus.emit('dsa:operation', { op: `Zone 3 — linked list  ptr = head`, zone: 'list' })
+    bus.emit('dsa:operation', {
+      op: 'Zone 3 — linked list  ptr = head. You are standing on the HEAD: the one entry point into the whole chain. Unlike the Array Plains, there is no index table and no teleport target list here. Every other node lives somewhere else in memory, so the only way forward is to follow pointers through the jungle.',
+      zone: 'list',
+    })
     this.time.delayedCall(200, () => this.emitMapState())
   }
 
@@ -203,6 +218,136 @@ export class Zone3_LinkedList extends Phaser.Scene {
   }
 
   /* ── map state emission ─────────────────── */
+
+  private playerYFor(node: LinkedListNode) {
+    return node.platform.y - PLAYER_NODE_OFFSET
+  }
+
+  private ghostYFor(node: LinkedListNode) {
+    return node.platform.y - GHOST_NODE_OFFSET
+  }
+
+  private ghostLabelYFor(node: LinkedListNode) {
+    return node.platform.y - GHOST_LABEL_OFFSET
+  }
+
+  private layoutNodes() {
+    this.nodeList.forEach((node, index) => {
+      node.index = index
+      const x = FIRST_X + index * NODE_SPACING
+      node.platform.setPosition(x, NODE_BASE_Y)
+      node.platform.refreshBody()
+
+      const label = this.nodeLabels.get(node)
+      label?.setPosition(x, NODE_BASE_Y)
+    })
+  }
+
+  private syncPlayerToCurrent() {
+    if (!this.player || !this.current) return
+    const body = this.player.body as Phaser.Physics.Arcade.Body
+    const allowGravity = body.allowGravity
+    body.setAllowGravity(false)
+    body.reset(this.current.platform.x, this.playerYFor(this.current))
+    body.setVelocity(0, 0)
+    body.updateFromGameObject()
+    body.setAllowGravity(allowGravity)
+  }
+
+  private updateWorldBounds() {
+    const rightmostX = this.nodeList.length
+      ? Math.max(...this.nodeList.map((node) => node.platform.x))
+      : FIRST_X
+    const width = Math.max(WORLD_W, rightmostX + WORLD_PADDING_RIGHT)
+    this.physics.world.setBounds(0, 0, width, WORLD_H)
+    this.cameras.main.setBounds(0, 0, width, WORLD_H)
+  }
+
+  private clearLinkVisuals() {
+    this.vineMap.forEach(({ main, glow }) => {
+      this.tweens.killTweensOf([main, glow])
+      main.destroy()
+      glow.destroy()
+    })
+    this.vineMap.clear()
+
+    this.brokenVineMap.forEach(({ main, glow }) => {
+      this.tweens.killTweensOf([main, glow])
+      main.destroy()
+      glow.destroy()
+    })
+    this.brokenVineMap.clear()
+
+    if (this.cycleVineGfx) {
+      this.cycleVineGfx.main.destroy()
+      this.cycleVineGfx.glow.destroy()
+      this.cycleVineGfx = null
+    }
+
+    this.nullText?.destroy()
+    this.nullText = null
+  }
+
+  private drawNullMarker() {
+    const tail = this.nodeList[this.nodeList.length - 1]
+    if (!tail) return
+    if (this.severedOriginals.has(tail) || tail.next !== null) return
+
+    this.nullText = this.add.text(
+      tail.platform.x + 120,
+      tail.platform.y - 8,
+      'NULL',
+      {
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        color: '#ff7799',
+        stroke: '#220011',
+        strokeThickness: 3,
+      },
+    ).setOrigin(0.5).setDepth(8)
+  }
+
+  private redrawConnections() {
+    this.clearLinkVisuals()
+
+    for (const node of this.nodeList) {
+      if (this.severedOriginals.has(node)) {
+        this.drawBrokenVine(node)
+        continue
+      }
+
+      if (node.next === null) continue
+
+      const isCycle = node === this.cycleTailNode && node.next === this.cycleEntryNode
+      if (!isCycle) this.drawVine(node, node.next)
+    }
+
+    const cycleIsActive =
+      this.nodeList.includes(this.cycleTailNode) &&
+      this.nodeList.includes(this.cycleEntryNode) &&
+      this.cycleTailNode.next === this.cycleEntryNode
+
+    if (cycleIsActive) this.drawCycleVine(this.cycleVineColor)
+    this.drawNullMarker()
+  }
+
+  private refreshListLayout({ syncPlayer = false, refreshCorruptor = false }: {
+    syncPlayer?: boolean
+    refreshCorruptor?: boolean
+  } = {}) {
+    this.layoutNodes()
+    this.redrawConnections()
+    this.updateWorldBounds()
+
+    if (syncPlayer) this.syncPlayerToCurrent()
+
+    if (refreshCorruptor && this.corruptorGfx && this.nodeList.length > 0) {
+      const tail = this.nodeList[this.nodeList.length - 1]
+      this.redrawCorruptor(tail.platform.x, tail.platform.y - CORRUPTOR_OFFSET)
+    }
+
+    this.emitMapState()
+  }
 
   private emitMapState() {
     const nodes: MapNode[] = this.nodeList.map(n => ({
@@ -270,24 +415,12 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.vineMap.set(fromNode, { main: g, glow: glowG })
   }
 
-  private removeVine(fromNode: LinkedListNode) {
-    const entry = this.vineMap.get(fromNode)
-    if (!entry) return
-    this.tweens.add({
-      targets: [entry.main, entry.glow],
-      alpha: 0,
-      duration: 300,
-      onComplete: () => { entry.main.destroy(); entry.glow.destroy() },
-    })
-    this.vineMap.delete(fromNode)
-  }
-
   private drawCycleVine(color: number) {
     const fx = this.cycleTailNode.platform.x
     const fy = this.cycleTailNode.platform.y + NODE_RADIUS
     const tx = this.cycleEntryNode.platform.x
     const ty = this.cycleEntryNode.platform.y + NODE_RADIUS
-    const ly = PLAYER_Y + 180
+    const ly = NODE_BASE_Y + 180
 
     const glowG = this.add.graphics().setDepth(1)
     glowG.lineStyle(14, color, 0.18)
@@ -347,19 +480,6 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.tweens.add({ targets: [g, glowG], alpha: { from: 1, to: 0.25 }, duration: 500, yoyo: true, repeat: -1 })
   }
 
-  private removeBrokenVine(fromNode: LinkedListNode) {
-    const entry = this.brokenVineMap.get(fromNode)
-    if (!entry) return
-    this.tweens.killTweensOf([entry.main, entry.glow])
-    this.tweens.add({
-      targets: [entry.main, entry.glow],
-      alpha: 0,
-      duration: 250,
-      onComplete: () => { entry.main.destroy(); entry.glow.destroy() },
-    })
-    this.brokenVineMap.delete(fromNode)
-  }
-
   /* ── node labels ────────────────────────── */
 
   private addNodeLabel(node: LinkedListNode) {
@@ -373,7 +493,10 @@ export class Zone3_LinkedList extends Phaser.Scene {
 
   private traverse() {
     if (!this.current.next) {
-      bus.emit('dsa:operation', { op: `ptr->next == null (end of list)`, zone: 'list' })
+      bus.emit('dsa:operation', {
+        op: "ptr->next == null — NULL means the chain ends here. Following NULL is like trying to open a door that doesn't exist. In C this would crash your program, and in Java you'd meet a NullPointerException. Arrays give you index numbers; linked lists give you one pointer at a time, so NULL is the hard stop.",
+        zone: 'list',
+      })
       return
     }
 
@@ -389,7 +512,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.tweens.add({
       targets: this.player,
       x: next.platform.x,
-      y: PLAYER_Y,
+      y: this.playerYFor(next),
       duration: 500,
       ease: 'Power2',
       onComplete: () => {
@@ -412,7 +535,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
           }
         } else {
           bus.emit('dsa:operation', {
-            op: `ptr = ptr->next // [${next.index}].value=${next.value}`,
+            op: `ptr = ptr->next — You're following the chain: each node only knows where the NEXT one is. Unlike the Array Plains where you teleported with arr[index], every node here lives at its own memory address, like a treasure hunt where each clue only reveals the next clue. Step count: ${this.traversals}. It took ${this.traversals} hop${this.traversals === 1 ? '' : 's'} to reach value ${next.value}. Linked lists give up random access so insertion and deletion can be almost effortless.`,
             zone: 'list',
           })
           bus.emit('dsa:step', undefined)
@@ -430,7 +553,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
 
     const cam = this.cameras.main
     const banner = this.add.text(cam.width / 2, 170,
-      'Ghost Mode unlocked\nFloyd\'s Cycle Detection — press → to step',
+      "Ghost Mode unlocked\nFloyd's Cycle Detection: one pointer walks, one pointer sprints.\nIf they ever collide, the list contains a loop. Press → to step.",
       { fontSize: '24px', color: '#00ffff', align: 'center', stroke: '#000033', strokeThickness: 4 }
     ).setScrollFactor(0).setOrigin(0.5).setDepth(20)
     this.time.delayedCall(2500, () => banner.destroy())
@@ -441,7 +564,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.tweens.add({
       targets: this.player,
       x: this.head.platform.x,
-      y: PLAYER_Y,
+      y: this.playerYFor(this.head),
       duration: 350,
       ease: 'Power2',
       onComplete: () => {
@@ -452,13 +575,19 @@ export class Zone3_LinkedList extends Phaser.Scene {
       },
     })
 
-    this.ghostSprite = this.add.image(this.head.platform.x, PLAYER_Y - 72, 'ghost').setDepth(9)
-    this.ghostLabelGfx = this.add.text(this.head.platform.x, PLAYER_Y - 112, 'fast', {
+    this.ghostSprite = this.add.image(this.head.platform.x, this.ghostYFor(this.head), 'ghost').setDepth(9)
+    this.ghostLabelGfx = this.add.text(this.head.platform.x, this.ghostLabelYFor(this.head), 'fast', {
       fontSize: '14px', color: '#ffff00', stroke: '#000000', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(9)
 
-    bus.emit('dsa:operation', { op: `Floyd's: slow=head, fast=head`, zone: 'list' })
-    bus.emit('dsa:operation', { op: `→ to step: slow+1, fast+2`, zone: 'list' })
+    bus.emit('dsa:operation', {
+      op: "Floyd's: slow=head, fast=head — arrays would let you jump by index, but in pointer-land both runners must follow the couplers. One pointer moves 1 step, the other 2.",
+      zone: 'list',
+    })
+    bus.emit('dsa:operation', {
+      op: '→ to step: slow+1, fast+2. If the fast runner ever catches the slow runner, you are trapped in a cycle.',
+      zone: 'list',
+    })
   }
 
   private ghostStep() {
@@ -479,7 +608,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.tweens.add({
       targets: this.player,
       x: newSlow.platform.x,
-      y: PLAYER_Y,
+      y: this.playerYFor(newSlow),
       duration: 400,
       ease: 'Power2',
     })
@@ -487,7 +616,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.tweens.add({
       targets: this.ghostSprite,
       x: newFast.platform.x,
-      y: PLAYER_Y - 72,
+      y: this.ghostYFor(newFast),
       duration: 400,
       ease: 'Power2',
     })
@@ -495,7 +624,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.tweens.add({
       targets: this.ghostLabelGfx,
       x: newFast.platform.x,
-      y: PLAYER_Y - 112,
+      y: this.ghostLabelYFor(newFast),
       duration: 400,
       ease: 'Power2',
       onComplete: () => {
@@ -519,24 +648,19 @@ export class Zone3_LinkedList extends Phaser.Scene {
 
   private onCycleDetected() {
     this.loopMode = 'caught'
+    this.cycleVineColor = 0xff2200
 
     bus.emit('dsa:operation', {
-      op: `CYCLE DETECTED: slow==fast at [${this.slowNode!.index}](${this.slowNode!.value})`,
+      op: `CYCLE DETECTED: slow==fast at [${this.slowNode!.index}](${this.slowNode!.value}). Two runners meeting means the chain loops back on itself instead of ending in NULL.`,
       zone: 'list',
     })
 
     this.tweens.add({ targets: this.ghostSprite, alpha: 0, duration: 140, yoyo: true, repeat: 5 })
-
-    if (this.cycleVineGfx) {
-      this.cycleVineGfx.main.destroy()
-      this.cycleVineGfx.glow.destroy()
-      this.cycleVineGfx = null
-    }
-    this.drawCycleVine(0xff2200)
+    this.redrawConnections()
 
     const cam = this.cameras.main
     this.caughtHint = this.add.text(cam.width / 2, cam.height - 52,
-      'SPACE — cut the offending vine',
+      'SPACE — cut the offending vine and turn the loop back into a proper list',
       { fontSize: '20px', color: '#ff6600', stroke: '#000000', strokeThickness: 3 }
     ).setScrollFactor(0).setOrigin(0.5).setDepth(20)
 
@@ -550,18 +674,8 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.caughtHint?.destroy()
     this.caughtHint = null
 
-    if (this.cycleVineGfx) {
-      const { main, glow } = this.cycleVineGfx
-      this.tweens.add({
-        targets: [main, glow],
-        alpha: 0,
-        duration: 400,
-        onComplete: () => { main.destroy(); glow.destroy() },
-      })
-      this.cycleVineGfx = null
-    }
-
     this.cycleTailNode.next = null
+    this.redrawConnections()
     this.emitMapState()
 
     this.ghostSprite?.destroy()
@@ -570,7 +684,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.ghostLabelGfx = null
 
     bus.emit('dsa:operation', {
-      op: `cycle cut — node[${this.cycleTailNode.index}](${this.cycleTailNode.value}).next = null`,
+      op: `cycle cut — node[${this.cycleTailNode.index}](${this.cycleTailNode.value}).next = null. The tail no longer points backward, so traversal can finally terminate at NULL instead of looping forever.`,
       zone: 'list',
     })
 
@@ -589,7 +703,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.tweens.add({
       targets: this.player,
       x: this.head.platform.x,
-      y: PLAYER_Y,
+      y: this.playerYFor(this.head),
       duration: 450,
       ease: 'Power2',
       onComplete: () => {
@@ -601,7 +715,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
     })
 
     this.corruptorGfx = this.add.graphics().setDepth(15)
-    this.redrawCorruptor(this.nodeList[this.nodeList.length - 1].platform.x, PLAYER_Y - 90)
+    this.redrawCorruptor(this.nodeList[this.nodeList.length - 1].platform.x, this.nodeList[this.nodeList.length - 1].platform.y - CORRUPTOR_OFFSET)
     this.tweens.add({
       targets: this.corruptorGfx,
       alpha: { from: 1, to: 0.35 },
@@ -612,7 +726,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
 
     const cam = this.cameras.main
     const banner = this.add.text(cam.width / 2, 170,
-      'CORRUPTION ENTITY DETECTED\nSevering next→ pointers!\nNavigate (← →) and press R to repair vines',
+      "CORRUPTION ENTITY DETECTED\nIt's severing next pointers — the couplers between train cars.\nNavigate (← →) and press R to repair the chain before the list becomes unreachable.",
       { fontSize: '20px', color: '#ff4400', align: 'center', stroke: '#000000', strokeThickness: 4 }
     ).setScrollFactor(0).setOrigin(0.5).setDepth(20)
     this.time.delayedCall(3500, () => banner.destroy())
@@ -623,12 +737,18 @@ export class Zone3_LinkedList extends Phaser.Scene {
     ).setScrollFactor(0).setOrigin(0.5).setDepth(20)
 
     this.corruptionHintText = this.add.text(cam.width / 2, cam.height - 50,
-      '← → navigate  |  R repair severed vine  |  if HEAD.next = null → list dissolves',
+      '← → navigate  |  R repair a broken pointer  |  if HEAD.next = null the whole list becomes unreachable',
       { fontSize: '15px', color: '#ff6600', stroke: '#000000', strokeThickness: 3 }
     ).setScrollFactor(0).setOrigin(0.5).setDepth(20)
 
-    bus.emit('dsa:operation', { op: `CORRUPTION — severs node.next at random`, zone: 'list' })
-    bus.emit('dsa:operation', { op: `Navigate ← → then R to repair`, zone: 'list' })
+    bus.emit('dsa:operation', {
+      op: 'CORRUPTION — it is severing node.next at random. In a linked list, breaking one pointer is enough to lose everything beyond it.',
+      zone: 'list',
+    })
+    bus.emit('dsa:operation', {
+      op: 'Navigate ← → then R to repair. You are reconnecting memory addresses, not moving elements like an array.',
+      zone: 'list',
+    })
 
     this.corruptionTimer = this.time.addEvent({
       delay: 2800,
@@ -681,16 +801,15 @@ export class Zone3_LinkedList extends Phaser.Scene {
 
     this.severedOriginals.set(target, target.next!)
     target.next = null
-    this.removeVine(target)
-    this.time.delayedCall(320, () => this.drawBrokenVine(target))
+    this.redrawConnections()
 
-    this.redrawCorruptor(target.platform.x, PLAYER_Y - 90)
+    this.redrawCorruptor(target.platform.x, target.platform.y - CORRUPTOR_OFFSET)
 
     this.cameras.main.flash(180, 255, 0, 0, false)
     this.cameras.main.shake(150, 0.008)
 
     bus.emit('dsa:operation', {
-      op: `CORRUPTION severs [${target.index}](${target.value}).next = null`,
+      op: `CORRUPTION severs [${target.index}](${target.value}).next = null. The chain now breaks here, like a treasure map whose next clue was torn off.`,
       zone: 'list',
     })
 
@@ -707,7 +826,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
 
     if (!this.severedOriginals.has(this.current)) {
       bus.emit('dsa:operation', {
-        op: `no severed vine at [${this.current.index}](${this.current.value})`,
+        op: `no severed vine at [${this.current.index}](${this.current.value}). This node still knows its next address, so there is nothing to rewire here.`,
         zone: 'list',
       })
       return
@@ -721,11 +840,10 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.severedOriginals.delete(this.current)
     this.corruptionWavesRepaired++
 
-    this.removeBrokenVine(this.current)
     this.time.delayedCall(300, () => {
-      this.drawVine(this.current, originalNext)
+      this.refreshListLayout({ syncPlayer: true, refreshCorruptor: true })
       bus.emit('dsa:operation', {
-        op: `REPAIRED: [${this.current.index}](${this.current.value}).next → [${originalNext.index}](${originalNext.value})`,
+        op: `REPAIRED: [${this.current.index}](${this.current.value}).next → [${originalNext.index}](${originalNext.value}). The coupler is back in place, so the rest of the list is reachable again.`,
         zone: 'list',
       })
       this.cameras.main.flash(200, 0, 255, 100, false)
@@ -752,7 +870,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.tweens.add({
       targets: this.player,
       x: targetNode.platform.x,
-      y: PLAYER_Y,
+      y: this.playerYFor(targetNode),
       duration: 380,
       ease: 'Power2',
       onComplete: () => {
@@ -764,7 +882,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
 
         const severed = this.severedOriginals.has(this.current)
         bus.emit('dsa:operation', {
-          op: `at [${this.current.index}](${this.current.value})${severed ? ' ⚡ SEVERED — press R' : ''}`,
+          op: `at [${this.current.index}](${this.current.value})${severed ? ' ⚡ SEVERED — press R to reconnect the broken pointer' : ' — pointer intact'}`,
           zone: 'list',
         })
       },
@@ -800,7 +918,10 @@ export class Zone3_LinkedList extends Phaser.Scene {
     this.cameras.main.flash(500, 255, 0, 0)
     this.cameras.main.shake(600, 0.025)
 
-    bus.emit('dsa:operation', { op: `HEAD.next = null — LIST DISSOLVES`, zone: 'list' })
+    bus.emit('dsa:operation', {
+      op: 'HEAD.next = null — LIST DISSOLVES. If the head loses its next pointer, the rest of the chain becomes unreachable. Arrays still have indexes; linked lists only have links, so a broken head means the jungle past it effectively disappears.',
+      zone: 'list',
+    })
 
     for (const n of this.nodeList) {
       const label = this.nodeLabels.get(n)
@@ -832,7 +953,10 @@ export class Zone3_LinkedList extends Phaser.Scene {
     s.setOutcome('defeat')
 
     this.time.delayedCall(1400, () => {
-      bus.emit('dsa:operation', { op: `linked list destroyed — restart to try again`, zone: 'list' })
+      bus.emit('dsa:operation', {
+        op: 'linked list destroyed — restart to try again. Pointer structures are powerful, but one bad link can orphan an entire region of memory.',
+        zone: 'list',
+      })
     })
   }
 
@@ -840,6 +964,15 @@ export class Zone3_LinkedList extends Phaser.Scene {
 
   private insertAfterCurrent() {
     if (this.busy) return
+
+    if (!this.insertLessonShown) {
+      this.insertLessonShown = true
+      bus.emit('dsa:operation', {
+        op: "Insertion lesson — Now you'll see the linked list's superpower. In an array, inserting in the middle means shifting every element after it, like squeezing a new person into a packed line. Here you only rewire two pointers. Watch.",
+        zone: 'list',
+      })
+    }
+
     this.busy = true
 
     const oldNext = this.current.next
@@ -847,7 +980,7 @@ export class Zone3_LinkedList extends Phaser.Scene {
     const fromX = this.current.platform.x
     const toX = oldNext ? oldNext.platform.x : fromX + NODE_SPACING
     const finalX = (fromX + toX) / 2
-    const startY = PLAYER_Y - 220
+    const startY = NODE_BASE_Y - 220
 
     const sprite = this.platforms.create(finalX, startY, 'node') as Phaser.Physics.Arcade.Sprite
     const newNode: LinkedListNode = { value: newValue, next: oldNext, platform: sprite, index: this.current.index + 1 }
@@ -857,28 +990,37 @@ export class Zone3_LinkedList extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(8)
     this.nodeLabels.set(newNode, label)
 
-    bus.emit('dsa:operation', { op: `new_node = Node(${newValue})`, zone: 'list' })
+    bus.emit('dsa:operation', {
+      op: `new_node = Node(${newValue}) — A fresh node appears in memory. Arrays need a contiguous block; linked lists can allocate the newcomer anywhere and stitch it in later.`,
+      zone: 'list',
+    })
 
     this.tweens.add({
       targets: [sprite, label],
-      y: PLAYER_Y,
+      y: NODE_BASE_Y,
       duration: 400,
       ease: 'Bounce.Out',
       onComplete: () => {
         sprite.refreshBody()
+        this.nodeList.splice(this.current.index + 1, 0, newNode)
+        this.refreshListLayout({ syncPlayer: true })
+
         if (oldNext) {
-          this.drawVine(newNode, oldNext)
-          bus.emit('dsa:operation', { op: `new_node.next = current.next // → ${oldNext.value}`, zone: 'list' })
+          bus.emit('dsa:operation', {
+            op: `new_node.next = current.next — The new node now points to what USED to come after you. Think of it like a train car grabbing the next coupler before the old car lets go.`,
+            zone: 'list',
+          })
         }
+
         this.time.delayedCall(600, () => {
-          this.removeVine(this.current)
           this.current.next = newNode
           this.time.delayedCall(350, () => {
-            this.drawVine(this.current, newNode)
-            bus.emit('dsa:operation', { op: `current.next = new_node // inserted ${newValue}`, zone: 'list' })
-            this.nodeList.splice(this.current.index + 1, 0, newNode)
-            this.nodeList.forEach((n, i) => (n.index = i))
-            this.emitMapState()
+            const remaining = Math.max(0, this.nodeList.length - (newNode.index + 1))
+            this.refreshListLayout({ syncPlayer: true })
+            bus.emit('dsa:operation', {
+              op: `current.next = new_node — Done. The current node now points to the new node, and the new node points to the rest of the chain. Two pointer changes: O(1). In an array, inserting here would have shifted ${remaining} element${remaining === 1 ? '' : 's'}.`,
+              zone: 'list',
+            })
             this.busy = false
           })
         })
@@ -891,40 +1033,59 @@ export class Zone3_LinkedList extends Phaser.Scene {
   private deleteNextNode() {
     if (this.busy) return
     if (!this.current.next) {
-      bus.emit('dsa:operation', { op: `delete: current.next is null`, zone: 'list' })
+      bus.emit('dsa:operation', {
+        op: 'delete: current.next is null. There is no next node to skip, because the chain already ends here at NULL.',
+        zone: 'list',
+      })
       return
     }
 
-    this.busy = true
     const target = this.current.next
-    const afterTarget = target.next
+    if (target === this.cycleEntryNode || target === this.cycleTailNode) {
+      bus.emit('dsa:operation', {
+        op: `delete current.next blocked at ${target.value}. This node anchors the scripted cycle puzzle, so the jungle refuses to remove it yet.`,
+        zone: 'list',
+      })
+      return
+    }
 
-    bus.emit('dsa:operation', { op: `delete current.next // removing ${target.value}`, zone: 'list' })
-
-    this.removeVine(this.current)
-    this.removeVine(target)
-    this.current.next = afterTarget
-
-    if (afterTarget) {
-      this.time.delayedCall(350, () => {
-        this.drawVine(this.current, afterTarget)
-        bus.emit('dsa:operation', { op: `current.next = target.next // → ${afterTarget.value}`, zone: 'list' })
+    if (!this.deleteLessonShown) {
+      this.deleteLessonShown = true
+      bus.emit('dsa:operation', {
+        op: "Deletion lesson — Deletion in a linked list is surgical. You don't shift anything; you make the previous node skip over the deleted one. The removed node becomes unreachable, floating in freed memory.",
+        zone: 'list',
       })
     }
+
+    this.busy = true
+    const afterTarget = target.next
+
+    bus.emit('dsa:operation', {
+      op: `delete current.next // removing ${target.value}. Arrays would slide every later element left; linked lists only need one pointer change.`,
+      zone: 'list',
+    })
+
+    this.current.next = afterTarget
+    const shifted = Math.max(0, this.nodeList.length - (this.current.index + 2))
+    const idx = this.nodeList.indexOf(target)
+    if (idx !== -1) this.nodeList.splice(idx, 1)
+    this.refreshListLayout({ syncPlayer: true })
+    bus.emit('dsa:operation', {
+      op: `current.next = target.next — Node ${target.value} is gone. Its predecessor now points past it. In an array, deleting from the middle would have shifted ${shifted} element${shifted === 1 ? '' : 's'}. Here it is O(1). The removed node may still exist in memory briefly; that is what garbage collection cleans up.`,
+      zone: 'list',
+    })
 
     const targetLabel = this.nodeLabels.get(target)
     this.tweens.add({
       targets: targetLabel ? [target.platform, targetLabel] : [target.platform],
-      y: PLAYER_Y - 220,
+      y: NODE_BASE_Y - 220,
       alpha: 0,
       duration: 600,
       ease: 'Power2',
       onComplete: () => {
         target.platform.destroy()
         if (targetLabel) { targetLabel.destroy(); this.nodeLabels.delete(target) }
-        const idx = this.nodeList.indexOf(target)
-        if (idx !== -1) this.nodeList.splice(idx, 1)
-        this.nodeList.forEach((n, i) => (n.index = i))
+        this.syncPlayerToCurrent()
         this.emitMapState()
         this.busy = false
       },
@@ -941,7 +1102,10 @@ export class Zone3_LinkedList extends Phaser.Scene {
     s.setOutcome('victory')
     s.unlockCodex(CODEX_ZONE3)
     this.cameras.main.flash(500, 100, 200, 255)
-    bus.emit('dsa:operation', { op: `ALL VINES RESTORED — corruption defeated`, zone: 'list' })
+    bus.emit('dsa:operation', {
+      op: 'ALL VINES RESTORED — corruption defeated. Arrays still win when you need instant indexing, but linked lists shine when the structure keeps changing and pointer rewiring beats shifting a whole block of memory.',
+      zone: 'list',
+    })
   }
 
   /* ── textures ──────────────────────────── */
