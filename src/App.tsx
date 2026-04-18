@@ -25,7 +25,7 @@ export default function App() {
   }, [currentZone, togglePause])
 
   return (
-    <div className="relative w-screen h-screen bg-black overflow-hidden" style={{ touchAction: 'manipulation' }}>
+    <div className="relative w-full h-full bg-black overflow-hidden" style={{ touchAction: 'manipulation' }}>
       <PhaserGame />
       <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4">
         <div className="pointer-events-auto self-start bg-black/60 text-white text-sm px-3 py-1 rounded">

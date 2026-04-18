@@ -8,11 +8,24 @@ function isTouchDevice() {
     ('ontouchstart' in window || navigator.maxTouchPoints > 0)
 }
 
-/**
- * Dispatch a synthetic keyboard event at the window level so Phaser's
- * keyboard manager (which listens on window) picks it up.
- * Used for keys not in virtualInput (Zone3: Insert, Delete).
- */
+function useIsLandscape() {
+  const [landscape, setLandscape] = useState(
+    typeof window !== 'undefined' && window.innerWidth > window.innerHeight
+  )
+  useEffect(() => {
+    const update = () => setLandscape(window.innerWidth > window.innerHeight)
+    window.addEventListener('resize', update)
+    window.addEventListener('orientationchange', update)
+    screen.orientation?.addEventListener('change', update)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('orientationchange', update)
+      screen.orientation?.removeEventListener('change', update)
+    }
+  }, [])
+  return landscape
+}
+
 function fireKey(key: string, keyCode: number, type: 'keydown' | 'keyup') {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   window.dispatchEvent(new KeyboardEvent(type, { key, code: key, keyCode, which: keyCode, bubbles: true } as any))
@@ -43,16 +56,19 @@ function Btn({ label, onPress, onRelease, className = '' }: BtnProps) {
   )
 }
 
-/** Right-side action buttons, contextual per zone */
-function ZoneActions({ zone }: { zone: string }) {
+function ZoneActions({ zone, sm }: { zone: string; sm: boolean }) {
+  const wh = sm ? 'w-12 h-10' : 'w-16 h-14'
+  const wh2 = sm ? 'w-11 h-9' : 'w-14 h-12'
+  const txt = sm ? 'text-xs' : 'text-sm'
+
   if (zone === 'array') {
     return (
-      <div className="flex flex-col items-center gap-2">
-        <span className="text-[9px] text-white/30 font-mono uppercase tracking-widest">step</span>
+      <div className="flex flex-col items-center gap-1">
+        {!sm && <span className="text-[9px] text-white/30 font-mono uppercase tracking-widest">step</span>}
         <Btn
           label="STEP"
           onPress={() => virtualInput.pressSpace()}
-          className="w-16 h-14 text-sm text-cyan-300 border-cyan-700/50 rounded-lg"
+          className={`${wh} ${txt} text-cyan-300 border-cyan-700/50 rounded-lg`}
         />
       </div>
     )
@@ -60,12 +76,12 @@ function ZoneActions({ zone }: { zone: string }) {
 
   if (zone === 'stack') {
     return (
-      <div className="flex flex-col items-center gap-2">
-        <span className="text-[9px] text-white/30 font-mono uppercase tracking-widest">pop</span>
+      <div className="flex flex-col items-center gap-1">
+        {!sm && <span className="text-[9px] text-white/30 font-mono uppercase tracking-widest">pop</span>}
         <Btn
           label="POP"
           onPress={() => virtualInput.pressSpace()}
-          className="w-16 h-14 text-base text-yellow-300 border-yellow-700/50 rounded-lg"
+          className={`${wh} ${txt} text-yellow-300 border-yellow-700/50 rounded-lg`}
         />
       </div>
     )
@@ -74,42 +90,42 @@ function ZoneActions({ zone }: { zone: string }) {
   if (zone === 'list') {
     return (
       <div className="flex gap-2 items-end">
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1">
           <Btn
             label="INS"
             onPress={() => fireKey('Insert', 45, 'keydown')}
             onRelease={() => fireKey('Insert', 45, 'keyup')}
-            className="w-14 h-12 text-sm text-green-300 border-green-700/50 rounded-lg"
+            className={`${wh2} ${txt} text-green-300 border-green-700/50 rounded-lg`}
           />
           <Btn
             label="DEL"
             onPress={() => fireKey('Delete', 46, 'keydown')}
             onRelease={() => fireKey('Delete', 46, 'keyup')}
-            className="w-14 h-12 text-sm text-red-300 border-red-700/50 rounded-lg"
+            className={`${wh2} ${txt} text-red-300 border-red-700/50 rounded-lg`}
           />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1">
           <Btn
             label="RPR"
             onPress={() => virtualInput.pressR()}
-            className="w-14 h-12 text-sm text-yellow-300 border-yellow-700/50 rounded-lg"
+            className={`${wh2} ${txt} text-yellow-300 border-yellow-700/50 rounded-lg`}
           />
           <Btn
             label="ACT"
             onPress={() => virtualInput.pressSpace()}
-            className="w-14 h-12 text-sm text-cyan-300 border-cyan-700/50 rounded-lg"
+            className={`${wh2} ${txt} text-cyan-300 border-cyan-700/50 rounded-lg`}
           />
         </div>
       </div>
     )
   }
 
-  // boot / menu — generic action
+  // boot / menu
   return (
     <Btn
       label="A"
       onPress={() => virtualInput.pressSpace()}
-      className="w-16 h-16 text-xl text-green-300 border-green-700/50 rounded-full"
+      className={`${sm ? 'w-12 h-12' : 'w-16 h-16'} text-xl text-green-300 border-green-700/50 rounded-full`}
     />
   )
 }
@@ -117,6 +133,7 @@ function ZoneActions({ zone }: { zone: string }) {
 export function TouchControls() {
   const [visible, setVisible] = useState(false)
   const currentZone = useGameStore((s: GameState) => s.currentZone)
+  const isLandscape = useIsLandscape()
 
   useEffect(() => {
     setVisible(isTouchDevice())
@@ -124,48 +141,56 @@ export function TouchControls() {
 
   if (!visible) return null
 
+  const btnSize = isLandscape
+    ? 'w-10 h-10 text-lg'
+    : 'w-14 h-14 text-xl'
+  const gap = isLandscape ? 'w-10 h-10' : 'w-14 h-14'
+
+  // Safe area insets keep controls away from notch in landscape
+  const bottomInset = 'calc(8px + env(safe-area-inset-bottom, 0px))'
+  const leftInset = 'max(24px, env(safe-area-inset-left, 24px))'
+  const rightInset = 'max(24px, env(safe-area-inset-right, 24px))'
+
   return (
     <div
       className="absolute inset-0 pointer-events-none z-[50]"
       style={{ touchAction: 'none' }}
     >
-      {/* ── D-pad: bottom-left ─────────────────── */}
+      {/* D-pad: bottom-left, respects left safe area (notch in landscape) */}
       <div
-        className="absolute left-6 pointer-events-auto touch-safe-pad"
-        style={{ bottom: 0 }}
+        className="absolute pointer-events-auto"
+        style={{ bottom: bottomInset, left: leftInset }}
       >
-        {/* Up */}
         <div className="flex justify-center mb-1">
           <Btn
             label="↑"
             onPress={() => virtualInput.pressUp()}
-            className="w-14 h-14 text-xl text-cyan-300 border-cyan-700/50 rounded-full"
+            className={`${btnSize} text-cyan-300 border-cyan-700/50 rounded-full`}
           />
         </div>
-        {/* Left · gap · Right */}
         <div className="flex gap-1">
           <Btn
             label="←"
             onPress={() => virtualInput.pressLeft()}
             onRelease={() => virtualInput.releaseLeft()}
-            className="w-14 h-14 text-xl rounded-full"
+            className={`${btnSize} rounded-full`}
           />
-          <div className="w-14 h-14" />
+          <div className={gap} />
           <Btn
             label="→"
             onPress={() => virtualInput.pressRight()}
             onRelease={() => virtualInput.releaseRight()}
-            className="w-14 h-14 text-xl rounded-full"
+            className={`${btnSize} rounded-full`}
           />
         </div>
       </div>
 
-      {/* ── Action buttons: bottom-right ───────── */}
+      {/* Action buttons: bottom-right, respects right safe area */}
       <div
-        className="absolute right-6 pointer-events-auto touch-safe-pad flex gap-3 items-end"
-        style={{ bottom: 0 }}
+        className="absolute pointer-events-auto flex gap-3 items-end"
+        style={{ bottom: bottomInset, right: rightInset }}
       >
-        <ZoneActions zone={currentZone} />
+        <ZoneActions zone={currentZone} sm={isLandscape} />
       </div>
     </div>
   )
