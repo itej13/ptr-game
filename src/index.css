@@ -7,6 +7,8 @@
 html, body, #root {
   width: 100%;
   height: 100%;
+  /* dvh fills only the visible viewport (excludes browser chrome) */
+  height: 100dvh;
   margin: 0;
   padding: 0;
 }
@@ -38,10 +40,7 @@ input, textarea, [contenteditable] {
   user-select: text;
 }
 
-/* Safe-area padding for notched devices (used by TouchControls) */
-.touch-safe-pad {
-  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-}
+/* Safe-area padding handled inline in TouchControls via env() */
 
 /* ── death screen glitch ─────────────────── */
 

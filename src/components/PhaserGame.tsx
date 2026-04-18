@@ -36,13 +36,17 @@ export function PhaserGame() {
 
     ConceptPauseManager.init(gameRef.current)
 
-    const onResize = () => {
-      gameRef.current?.scale.resize(window.innerWidth, window.innerHeight)
-    }
-    window.addEventListener('resize', onResize)
+    const refresh = () => gameRef.current?.scale.refresh()
+    const onOrientationChange = () => setTimeout(refresh, 150)
+
+    window.addEventListener('resize', refresh)
+    window.addEventListener('orientationchange', onOrientationChange)
+    screen.orientation?.addEventListener('change', onOrientationChange)
 
     return () => {
-      window.removeEventListener('resize', onResize)
+      window.removeEventListener('resize', refresh)
+      window.removeEventListener('orientationchange', onOrientationChange)
+      screen.orientation?.removeEventListener('change', onOrientationChange)
       gameRef.current?.destroy(true)
       gameRef.current = null
     }
