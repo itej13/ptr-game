@@ -1,8 +1,6 @@
 {
-  "buildCommand": "npm run build && npm ci --prefix big-o-odyssey && npm run build --prefix big-o-odyssey -- --base=/big-o-odyssey/ --outDir ../dist/big-o-odyssey",
-  "rewrites": [
-    { "source": "/big-o-odyssey", "destination": "/big-o-odyssey/index.html" },
-    { "source": "/big-o-odyssey/", "destination": "/big-o-odyssey/index.html" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  "installCommand": "npm ci --prefix big-o-odyssey",
+  "buildCommand": "npm run build --prefix big-o-odyssey",
+  "outputDirectory": "big-o-odyssey/dist",
+  "redirects": [{ "source": "/big-o-odyssey/:path*", "destination": "/:path*" }]
 }
