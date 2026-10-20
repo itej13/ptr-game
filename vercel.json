@@ -2,5 +2,8 @@
   "installCommand": "npm ci --prefix big-o-odyssey",
   "buildCommand": "npm run build --prefix big-o-odyssey",
   "outputDirectory": "big-o-odyssey/dist",
-  "redirects": [{ "source": "/big-o-odyssey/:path*", "destination": "/:path*" }]
+  "redirects": [
+    { "source": "/big-o-odyssey/", "destination": "/" },
+    { "source": "/big-o-odyssey/:path*", "destination": "/:path*" }
+  ]
 }
