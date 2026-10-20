@@ -2,6 +2,12 @@
   "installCommand": "npm ci --prefix big-o-odyssey",
   "buildCommand": "npm run build --prefix big-o-odyssey",
   "outputDirectory": "big-o-odyssey/dist",
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ],
   "redirects": [
     { "source": "/big-o-odyssey/", "destination": "/" },
     { "source": "/big-o-odyssey/:path*", "destination": "/:path*" }
