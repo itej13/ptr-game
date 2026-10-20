@@ -20,6 +20,7 @@ export interface Progress {
   settings: { muted: boolean; tester: boolean; theme: 'auto' | 'light' | 'dark' };
 }
 
+// ponytail: pre-rename id kept on purpose — changing it would orphan existing saves
 const KEY = 'dsa-quest.v1';
 const fresh = (): Progress => ({
   v: 1,
@@ -93,7 +94,7 @@ export function exportProgress(): string {
 }
 export function importProgress(json: string) {
   const p = JSON.parse(json) as Progress;
-  if (!p || p.v !== 1 || typeof p.levels !== 'object') throw new Error('Not a DSA Quest save file');
+  if (!p || p.v !== 1 || typeof p.levels !== 'object') throw new Error('Not a Big-O Odyssey save file');
   update((s) => Object.assign(s, fresh(), p));
 }
 export function resetProgress() {

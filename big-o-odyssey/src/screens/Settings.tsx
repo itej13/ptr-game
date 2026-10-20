@@ -50,7 +50,7 @@ export function Settings() {
               const blob = new Blob([exportProgress()], { type: 'application/json' });
               const a = document.createElement('a');
               a.href = URL.createObjectURL(blob);
-              a.download = 'dsa-quest-save.json';
+              a.download = 'big-o-odyssey-save.json';
               a.click();
               URL.revokeObjectURL(a.href);
             }}

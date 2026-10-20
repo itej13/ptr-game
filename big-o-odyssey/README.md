@@ -1,4 +1,4 @@
-# DSA Quest
+# Big-O Odyssey
 
 A level-gated web game for DTU **Data Structures** + **CS205 Design & Analysis of Algorithms**: 62 levels in 13 worlds, each with a lesson, step-by-step visualisers, a C++ memorisation dojo and a test. The next level opens only after ≥ 80 % on the test **and** zero-error recall of the level's C++.
 

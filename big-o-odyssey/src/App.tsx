@@ -43,10 +43,10 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <a href="#/" className="brand" aria-label="DSA Quest home">
+        <a href="#/" className="brand" aria-label="Big-O Odyssey home">
           <span className="brandmark">{'{}'}</span>
           <span>
-            DSA&nbsp;Quest
+            Big-O&nbsp;Odyssey
             <small>Data Structures × DAA</small>
           </span>
         </a>
